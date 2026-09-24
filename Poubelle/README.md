@@ -8,10 +8,12 @@ personne ne peut les reprendre.
 ## Dépendances
 - ModKit (`ModKit.dll`) et AAMenu (`AAMenu.dll`) doivent être installés sur le serveur.
 
-## Compilation
-1. Copier les DLL listées dans `libs/README.md` dans `libs/`.
-2. `dotnet build -c Release`
-3. Copier `bin/Release/net472/Poubelle.dll` dans le dossier `Plugins` du serveur.
+## Compilation (Visual Studio)
+1. Copier les 7 DLL listées dans `libs/README.md` dans le dossier `Poubelle/libs/`.
+2. Ouvrir **`Poubelle.csproj`** directement (Fichier → Ouvrir → Projet/Solution), ne pas
+   copier le code dans un autre projet.
+3. Générer en **Release** (ou `dotnet build -c Release`).
+4. Copier `bin/Release/net472/Poubelle.dll` dans le dossier `Plugins` du serveur.
 
 ## Utilisation (staff)
 Être admin **et en service admin**, puis :

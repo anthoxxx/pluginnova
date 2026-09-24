@@ -1,16 +1,17 @@
 # DLL nécessaires à la compilation
 
-Copiez ici (elles ne sont pas versionnées) :
+Mettez ces 7 fichiers **directement dans ce dossier `libs/`** (ils ne sont pas envoyés sur GitHub) :
 
-Depuis le dossier du jeu/serveur `Nova-Life_Data/Managed/` :
-- `Assembly-CSharp.dll`
-- `Assembly-CSharp-firstpass.dll`
-- `Mirror.dll`
-- `UnityEngine.CoreModule.dll`
-- `Newtonsoft.Json.dll`
+| Fichier | Où le trouver |
+|---|---|
+| `Assembly-CSharp.dll` | dossier du serveur Nova-Life → `Nova-Life_Data/Managed/` (ou `..._Data/Managed/`) |
+| `Assembly-CSharp-firstpass.dll` | même dossier |
+| `Mirror.dll` | même dossier |
+| `UnityEngine.CoreModule.dll` | même dossier |
+| `Newtonsoft.Json.dll` | même dossier |
+| `ModKit.dll` | le plugin ModKit (renommé exactement `ModKit.dll`) |
+| `AAMenu.dll` | le plugin AAMenu (renommé exactement `AAMenu.dll`) |
 
-Plugins requis :
-- `ModKit.dll`
-- `AAMenu.dll`
+S'il en manque une, la compilation affiche : `DLL manquante : XXX.dll`.
 
-Vous pouvez aussi pointer vers un autre dossier : `dotnet build -p:LibsPath=C:\chemin\vers\dlls`
+Autre dossier possible : `dotnet build -p:LibsPath="C:\chemin\vers\dlls"`

@@ -7,7 +7,7 @@
     <RootNamespace>Poubelle</RootNamespace>
     <Version>1.0.0</Version>
     <Authors>anthoxxx</Authors>
-    <!-- Dossier contenant les DLL du jeu, de ModKit et d'AAMenu (voir libs/README.md) -->
+    <!-- Dossier contenant TOUTES les DLL nécessaires (voir libs/README.md) -->
     <LibsPath Condition="'$(LibsPath)' == ''">$(MSBuildThisFileDirectory)libs</LibsPath>
   </PropertyGroup>
 
@@ -16,34 +16,17 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Reference Include="Assembly-CSharp">
-      <HintPath>$(LibsPath)/Assembly-CSharp.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="Assembly-CSharp-firstpass">
-      <HintPath>$(LibsPath)/Assembly-CSharp-firstpass.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="Mirror">
-      <HintPath>$(LibsPath)/Mirror.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="UnityEngine.CoreModule">
-      <HintPath>$(LibsPath)/UnityEngine.CoreModule.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="Newtonsoft.Json">
-      <HintPath>$(LibsPath)/Newtonsoft.Json.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="ModKit">
-      <HintPath>$(LibsPath)/ModKit.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="AAMenu">
-      <HintPath>$(LibsPath)/AAMenu.dll</HintPath>
+    <NovaDll Include="Assembly-CSharp;Assembly-CSharp-firstpass;Mirror;UnityEngine.CoreModule;Newtonsoft.Json;ModKit;AAMenu" />
+    <Reference Include="@(NovaDll)">
+      <HintPath>$(LibsPath)/%(Identity).dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>
+
+  <!-- Message clair au lieu de dizaines d'erreurs CS0246 si une DLL manque -->
+  <Target Name="CheckNovaDlls" BeforeTargets="ResolveAssemblyReferences">
+    <Error Condition="!Exists('$(LibsPath)/%(NovaDll.Identity).dll')"
+           Text="DLL manquante : %(NovaDll.Identity).dll. Copiez-la dans $(LibsPath) (voir libs/README.md)." />
+  </Target>
 
 </Project>
