@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <LangVersion>11.0</LangVersion>
+    <AssemblyName>Poubelle</AssemblyName>
+    <RootNamespace>Poubelle</RootNamespace>
+    <Version>1.0.0</Version>
+    <Authors>anthoxxx</Authors>
+    <!-- Dossier contenant les DLL du jeu, de ModKit et d'AAMenu (voir libs/README.md) -->
+    <LibsPath Condition="'$(LibsPath)' == ''">$(MSBuildThisFileDirectory)libs</LibsPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="Assembly-CSharp">
+      <HintPath>$(LibsPath)/Assembly-CSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Assembly-CSharp-firstpass">
+      <HintPath>$(LibsPath)/Assembly-CSharp-firstpass.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Mirror">
+      <HintPath>$(LibsPath)/Mirror.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(LibsPath)/UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>$(LibsPath)/Newtonsoft.Json.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="ModKit">
+      <HintPath>$(LibsPath)/ModKit.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="AAMenu">
+      <HintPath>$(LibsPath)/AAMenu.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

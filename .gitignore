@@ -1,0 +1,6 @@
+bin/
+obj/
+*.user
+.vs/
+# DLL du jeu / ModKit / AAMenu : à copier localement (voir Poubelle/libs/README.md)
+**/libs/*.dll

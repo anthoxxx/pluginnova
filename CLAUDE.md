@@ -121,3 +121,29 @@ player.ShowPanelUI(panel);
 Newtonsoft : `JsonConvert.SerializeObject(obj, Formatting.Indented)` et
 `JsonConvert.DeserializeObject<T>(json)`. À utiliser pour stocker des données ou les passer
 dans des fonctions réseau.
+
+## Plugins basés sur ModKit / AAMenu (Aarnow)
+
+La plupart des plugins de ce dépôt utilisent **ModKit** et **AAMenu** (DLL fournies par
+l'utilisateur, non versionnées, à mettre dans `<Plugin>/libs/`).
+
+- Le plugin hérite de `ModKit.ModKit` (et non de `Plugin`) :
+  `public MonPlugin(IGameAPI api) : base(api) { PluginInformations = new PluginInformations(AssemblyHelper.GetName(), "1.0.0", "anthoxxx"); }`
+- Base SQLite partagée via l'ORM : entité `class X : ModEntity<X>` avec `[AutoIncrement][PrimaryKey] int Id`,
+  `[Ignore]` pour les champs non stockés ; `Orm.RegisterTable<X>()` dans `OnPluginInit` ;
+  `await x.Save()`, `x.Delete()`, `X.Query(id)`, `X.QueryAll()`, `X.Query(p => ...)`.
+- Points bleus persistants : implémenter `PatternData` (Id, TypeName, PatternName, Context,
+  OnPlayerTrigger, SetProperties, GetPatternData, GetNPoints, SetPatternData, CreateOrGenerate),
+  puis `PointHelper.AddPattern(nameof(X), pattern)` et `AAMenu.AAMenu.menu.AddBuilder(PluginInformations, nameof(X), pattern, this)`.
+  Appeler `PointHelper.InitAllNPoint(player)` dans `OnPlayerSpawnCharacter`.
+  `PointHelper.CreateNPoint(player, pattern)` crée un point à la position du joueur.
+- Menus : `Panel panel = Context.PanelHelper.Create(titre, UIPanel.PanelType.Tab, player, () => CeMenu(player));`
+  puis `AddTabLine`, `NextButton`, `PreviousButton`, `PreviousButtonWithAction`, `CloseButton`, `Display()`.
+  **Ne pas utiliser `SetText`** avec `Panel` (écrasé par `Display()`) : utiliser `panel.TextLines.Add(...)`.
+- Inventaire : `InventoryUtils.ReturnPlayerInventory`, `RemoveFromInventory`, `CheckInventoryContainsItem`, `AddItem` ;
+  items : `ItemUtils.GetItemById`, `ItemUtils.GetIconIdByItemId`.
+- Autres entrées AAMenu : `AAMenu.Menu.AddInteractionTabLine`, `AddAdminTabLine`, `AddProximityTabLine`, etc.
+- Enums : `NotificationManager.Type` = Info, Success, Warning, Error ; `UIPanel.PanelType` = Text, Input, Tab, TabPrice.
+- Projet : SDK-style, `net472`, `LangVersion 11.0`, références en `<Private>false</Private>`.
+
+Exemple complet : `Poubelle/`.
