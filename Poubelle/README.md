@@ -15,7 +15,7 @@ personne ne peut les reprendre.
 
 ## Utilisation (staff)
 Être admin **et en service admin**, puis :
-- menu AAMenu → **Administration → Points bleus → Type de point : TrashPattern**, ou
+- menu AAMenu → **Administration → Points bleus → Type de point : Poubelle**, ou
 - commande **`/poubelle`**.
 
 Dans ce menu :

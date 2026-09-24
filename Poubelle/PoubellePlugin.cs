@@ -32,7 +32,7 @@ namespace Poubelle
             TrashPattern pattern = new TrashPattern(false);
             PointHelper.AddPattern(nameof(TrashPattern), pattern);
             if (AAMenu.AAMenu.menu != null)
-                AAMenu.AAMenu.menu.AddBuilder(PluginInformations, nameof(TrashPattern), pattern, this);
+                AAMenu.AAMenu.menu.AddBuilder(PluginInformations, "Poubelle", pattern, this);
             else
                 Logger.LogWarning(PluginInformations.SourceName, "AAMenu introuvable : utilisez la commande /poubelle.");
 
