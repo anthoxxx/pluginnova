@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <LangVersion>11.0</LangVersion>
+    <AssemblyName>FranceTravail</AssemblyName>
+    <RootNamespace>FranceTravail</RootNamespace>
+    <Version>1.0.0</Version>
+    <Authors>anthoxxx</Authors>
+    <!-- Dossier contenant TOUTES les DLL nécessaires (voir libs/README.md) -->
+    <LibsPath Condition="'$(LibsPath)' == ''">$(MSBuildThisFileDirectory)libs</LibsPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <NovaDll Include="Assembly-CSharp;Assembly-CSharp-firstpass;Mirror;UnityEngine.CoreModule;Newtonsoft.Json;ModKit;AAMenu" />
+    <Reference Include="@(NovaDll)">
+      <HintPath>$(LibsPath)/%(Identity).dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!-- Message clair au lieu de dizaines d'erreurs CS0246 si une DLL manque -->
+  <Target Name="CheckNovaDlls" BeforeTargets="ResolveAssemblyReferences">
+    <Error Condition="!Exists('$(LibsPath)/%(NovaDll.Identity).dll')"
+           Text="DLL manquante : %(NovaDll.Identity).dll. Copiez-la dans $(LibsPath) (voir libs/README.md)." />
+  </Target>
+
+</Project>
