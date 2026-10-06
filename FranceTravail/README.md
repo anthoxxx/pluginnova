@@ -40,6 +40,20 @@ Point bleu **Accueil demandeurs** (ou AAMenu → Interactions → France Travail
 - **Mes actualisations** : historique et statut.
 - **Mes offres d'emploi** : offres envoyées par France Travail → **Accepter** / **Refuser**.
 
+## RSA
+Toutes les **15 minutes** (réelles), chaque joueur **connecté** et inscrit reçoit son **RSA**
+(500€ par défaut, sur son compte en banque) avec la notification
+« Vous avez reçu votre RSA : 500€ ».
+
+Le RSA est versé dès l'inscription, puis tant que le joueur s'actualise : l'inscription ou la
+dernière actualisation ouvre droit au RSA pendant 24 h. Sans nouvelle actualisation, le RSA est
+**suspendu** (le joueur est prévenu) jusqu'à sa prochaine actualisation. Une actualisation
+refusée par un conseiller ne compte pas ; une inscription refusée, une désinscription ou une
+radiation arrêtent le RSA.
+
+Le joueur voit l'état de son RSA dans son espace ; l'agence le voit dans le dossier du demandeur,
+avec le total versé.
+
 ## Côté agence (employés)
 Point bleu **Espace agence** (ou AAMenu → Métier → France Travail - Espace agence), réservé aux
 employés de l'entreprise du point :
@@ -59,6 +73,11 @@ connectés reçoivent une notification et les listes ouvertes se mettent à jour
 | Clé | Défaut | Rôle |
 |---|---|---|
 | `DelaiEntreActualisationsHeures` | `24` | Délai minimum entre deux actualisations d'un joueur |
+| `MontantRsa` | `500` | Montant versé à chaque paiement |
+| `IntervallePaiementRsaMinutes` | `15` | Minutes réelles entre deux paiements |
+| `ValiditeActualisationHeures` | `24` | Durée pendant laquelle l'inscription / une actualisation ouvre droit au RSA |
+| `RsaApresValidationSeulement` | `false` | `true` : pas de RSA tant qu'un conseiller n'a pas validé l'inscription |
+| `RsaSurCompteBancaire` | `true` | `false` : RSA versé en liquide |
 | `EspaceAgenceReserveAuxPatrons` | `false` | `true` : seuls le patron et les gestionnaires ont l'espace agence |
 | `Secteurs` | liste | Secteurs proposés à l'inscription |
 

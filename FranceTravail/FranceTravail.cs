@@ -37,10 +37,11 @@ namespace FranceTravail
         public FranceTravailConfig Config { get; private set; }
         public PlayerMenu PlayerMenu { get; private set; }
         public AgencyMenu AgencyMenu { get; private set; }
+        public RsaService Rsa { get; private set; }
 
         public FranceTravailPlugin(IGameAPI api) : base(api)
         {
-            PluginInformations = new PluginInformations(AssemblyHelper.GetName(), "1.1.0", "anthoxxx");
+            PluginInformations = new PluginInformations(AssemblyHelper.GetName(), "1.2.0", "anthoxxx");
         }
 
         public override void OnPluginInit()
@@ -59,6 +60,9 @@ namespace FranceTravail
             AgencyMenu = new AgencyMenu(this);
 
             InitActivity();
+
+            Rsa = new RsaService(this);
+            Nova.server.OnMinutePassedEvent += Rsa.OnMinutePassed;
 
             // Points bleus : AAMenu > Administration > Points bleus > France Travail
             FranceTravailPoint pattern = new FranceTravailPoint(false) { Context = this };
@@ -172,6 +176,24 @@ namespace FranceTravail
         /// <summary>Délai minimum (en heures réelles) entre deux actualisations d'un même joueur.</summary>
         public int DelaiEntreActualisationsHeures { get; set; } = 24;
 
+        /// <summary>Montant du RSA versé à chaque paiement.</summary>
+        public double MontantRsa { get; set; } = 500;
+
+        /// <summary>Intervalle entre deux paiements du RSA, en minutes réelles.</summary>
+        public int IntervallePaiementRsaMinutes { get; set; } = 15;
+
+        /// <summary>
+        /// Durée (heures réelles) pendant laquelle une inscription ou une actualisation ouvre droit
+        /// au RSA. Passé ce délai sans nouvelle actualisation, le RSA n'est plus versé.
+        /// </summary>
+        public int ValiditeActualisationHeures { get; set; } = 24;
+
+        /// <summary>true : le RSA n'est versé qu'une fois l'inscription validée par un conseiller.</summary>
+        public bool RsaApresValidationSeulement { get; set; } = false;
+
+        /// <summary>true : RSA versé sur le compte en banque ; false : en liquide.</summary>
+        public bool RsaSurCompteBancaire { get; set; } = true;
+
         /// <summary>false : tous les employés de l'agence ont l'espace agence. true : seulement patron et gestionnaires.</summary>
         public bool EspaceAgenceReserveAuxPatrons { get; set; } = false;
 
@@ -258,6 +280,10 @@ namespace FranceTravail
         /// <summary>false une fois désinscrit (emploi trouvé, désinscription, radiation).</summary>
         public bool Active { get; set; }
         public string EndReason { get; set; }
+
+        /// <summary>Total du RSA versé pendant cette inscription, et date du dernier versement.</summary>
+        public double TotalRsa { get; set; }
+        public long LastRsaAt { get; set; }
 
         public JobSeeker() { }
 
@@ -486,6 +512,128 @@ namespace FranceTravail
     }
 
     // ======================================================================
+    //  RSA : versement automatique aux inscrits à jour de leurs actualisations
+    // ======================================================================
+
+    public enum RsaState { Verse, InscriptionRefusee, ValidationRequise, ActualisationRequise }
+
+    public class RsaService
+    {
+        private readonly FranceTravailPlugin ctx;
+        private long lastPaymentAt;
+        private bool paying;
+
+        public RsaService(FranceTravailPlugin context)
+        {
+            ctx = context;
+        }
+
+        private FranceTravailConfig Config => ctx.Config;
+
+        /// <summary>
+        /// Appelé à chaque minute du serveur. Le paiement est cadencé sur l'heure réelle,
+        /// pour tomber toutes les N minutes quelle que soit la vitesse de l'heure en jeu.
+        /// </summary>
+        public void OnMinutePassed()
+        {
+            long now = FtTime.Now();
+            if (lastPaymentAt == 0) lastPaymentAt = now; // premier paiement N minutes après le démarrage
+            if (paying || now - lastPaymentAt < Math.Max(1, Config.IntervallePaiementRsaMinutes) * 60L) return;
+            lastPaymentAt = now;
+            PayAll();
+        }
+
+        /// <summary>
+        /// Droit au RSA : inscription active et non refusée, et inscription ou dernière actualisation
+        /// (non refusée) datant de moins de <see cref="FranceTravailConfig.ValiditeActualisationHeures"/>.
+        /// </summary>
+        public RsaState GetState(JobSeeker s, List<Actualisation> actualisations)
+        {
+            if (s.Status == (int)RequestStatus.Refusee) return RsaState.InscriptionRefusee;
+            if (Config.RsaApresValidationSeulement && s.Status != (int)RequestStatus.Validee) return RsaState.ValidationRequise;
+            return RightsUntil(s, actualisations) >= FtTime.Now() ? RsaState.Verse : RsaState.ActualisationRequise;
+        }
+
+        /// <summary>Date jusqu'à laquelle l'inscription ou la dernière actualisation ouvre droit au RSA.</summary>
+        public long RightsUntil(JobSeeker s, List<Actualisation> actualisations)
+        {
+            long reference = s.CreatedAt;
+            foreach (Actualisation a in actualisations)
+            {
+                if (a.CharacterId == s.CharacterId && a.Status != (int)RequestStatus.Refusee && a.CreatedAt > reference)
+                    reference = a.CreatedAt;
+            }
+            return reference + Config.ValiditeActualisationHeures * 3600L;
+        }
+
+        /// <summary>Ligne d'état du RSA pour les menus joueur et agence.</summary>
+        public string StateLine(JobSeeker s, List<Actualisation> actualisations)
+        {
+            string amount = $"{Config.MontantRsa:0.##}€ / {Config.IntervallePaiementRsaMinutes} min";
+            switch (GetState(s, actualisations))
+            {
+                case RsaState.Verse:
+                    return Labels.Line("RSA", Color($"versé ({amount}) jusqu'au {FtTime.Format(RightsUntil(s, actualisations))}", Colors.Success));
+                case RsaState.ValidationRequise:
+                    return Labels.Line("RSA", Color("en attente de validation", Colors.Warning));
+                case RsaState.ActualisationRequise:
+                    return Labels.Line("RSA", Color("suspendu, actualisation requise", Colors.Error));
+                default:
+                    return Labels.Line("RSA", Color("non versé", Colors.Error));
+            }
+        }
+
+        private async void PayAll()
+        {
+            paying = true;
+            try
+            {
+                List<Player> online = Nova.server.Players.Where(p => p?.character != null).ToList();
+                if (online.Count == 0 || Config.MontantRsa <= 0) return;
+
+                Dictionary<int, JobSeeker> seekers = (await JobSeeker.Query(s => s.Active))
+                    .GroupBy(s => s.CharacterId)
+                    .ToDictionary(g => g.Key, g => g.OrderByDescending(s => s.CreatedAt).First());
+
+                foreach (Player player in online)
+                {
+                    int characterId = player.character.Id;
+                    if (!seekers.TryGetValue(characterId, out JobSeeker seeker)) continue;
+
+                    List<Actualisation> actualisations = await Actualisation.Query(a => a.CharacterId == characterId);
+                    RsaState state = GetState(seeker, actualisations);
+
+                    if (state == RsaState.Verse)
+                    {
+                        if (Config.RsaSurCompteBancaire)
+                            player.AddBankMoney(Config.MontantRsa, "RSA France Travail");
+                        else
+                            player.AddMoney(Config.MontantRsa, "RSA France Travail");
+
+                        seeker.TotalRsa += Config.MontantRsa;
+                        seeker.LastRsaAt = FtTime.Now();
+                        await seeker.Save();
+
+                        FranceTravailPlugin.Notify(player, $"Vous avez reçu votre RSA : {Config.MontantRsa:0.##}€", NotificationManager.Type.Success, 8f);
+                    }
+                    else if (state == RsaState.ActualisationRequise)
+                    {
+                        FranceTravailPlugin.Notify(player, "RSA non versé : vous ne vous êtes pas actualisé.", NotificationManager.Type.Warning, 8f);
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                Logger.LogError("FranceTravail", $"Paiement du RSA : {e.Message}");
+            }
+            finally
+            {
+                paying = false;
+            }
+        }
+    }
+
+    // ======================================================================
     //  Côté joueur : inscription, actualisation, propositions d'emploi
     // ======================================================================
 
@@ -535,6 +683,7 @@ namespace FranceTravail
             else
             {
                 panel.AddTabLine($"Mon inscription : {Labels.Status(seeker.Status)}", _ => { Live.Leave(panel); ShowMyFile(player, seeker); });
+                panel.AddTabLine(ctx.Rsa.StateLine(seeker, history), _ => { });
 
                 Actualisation last = history.FirstOrDefault();
                 long remaining = last == null ? 0 : last.CreatedAt + ctx.Config.DelaiEntreActualisationsHeures * 3600L - FtTime.Now();
@@ -701,8 +850,10 @@ namespace FranceTravail
             panel.Display();
         }
 
-        public async Task EndRegistration(JobSeeker s, string reason)
+        public async Task EndRegistration(JobSeeker seeker, string reason)
         {
+            // Relecture : le versement du RSA a pu modifier le dossier depuis l'ouverture du menu
+            JobSeeker s = await JobSeeker.Query(seeker.Id) ?? seeker;
             s.Active = false;
             s.EndReason = reason;
             await s.Save();
@@ -1034,6 +1185,7 @@ namespace FranceTravail
                 return true;
             }
 
+            s = current; // version à jour (le versement du RSA a pu la modifier)
             s.Status = (int)(validated ? RequestStatus.Validee : RequestStatus.Refusee);
             s.ProcessedBy = player.FullName;
             s.ProcessedAt = FtTime.Now();
@@ -1193,12 +1345,13 @@ namespace FranceTravail
             int characterId = seeker.CharacterId;
             List<Actualisation> history = await Actualisation.Query(a => a.CharacterId == characterId);
             List<JobProposal> proposals = await JobProposal.Query(p => p.CharacterId == characterId);
-            ShowSeeker(player, seeker, history.OrderByDescending(a => a.CreatedAt).FirstOrDefault(), history.Count, proposals);
+            ShowSeeker(player, seeker, history.OrderByDescending(a => a.CreatedAt).ToList(), proposals);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private void ShowSeeker(Player player, JobSeeker s, Actualisation last, int actualisations, List<JobProposal> proposals)
+        private void ShowSeeker(Player player, JobSeeker s, List<Actualisation> history, List<JobProposal> proposals)
         {
+            Actualisation last = history.FirstOrDefault();
             Panel panel = ctx.PanelHelper.Create($"Dossier : {s.PlayerName}", UIPanel.PanelType.Tab, player, () => OpenSeeker(player, s));
             bool online = FranceTravailPlugin.FindOnlinePlayer(s.CharacterId) != null;
 
@@ -1206,8 +1359,10 @@ namespace FranceTravail
             panel.AddTabLine(Labels.Line("Inscrit le", FtTime.Format(s.CreatedAt)), _ => { });
             panel.AddTabLine(Labels.Line("Connecté", online ? Color("Oui", Colors.Success) : Color("Non", Colors.Grey)), _ => { });
             Ui.InfoLines(panel, s.Summary());
-            panel.AddTabLine(Labels.Line("Actualisations", last == null ? "aucune" : $"{actualisations}, dernière le {FtTime.Format(last.CreatedAt)}"), _ => { });
+            panel.AddTabLine(Labels.Line("Actualisations", last == null ? "aucune" : $"{history.Count}, dernière le {FtTime.Format(last.CreatedAt)}"), _ => { });
             panel.AddTabLine(Labels.Line("Offres reçues", $"{proposals.Count} (acceptées : {proposals.Count(p => p.Status == (int)RequestStatus.Validee)})"), _ => { });
+            panel.AddTabLine(ctx.Rsa.StateLine(s, history), _ => { });
+            panel.AddTabLine(Labels.Line("RSA versé", $"{s.TotalRsa:0.##}€{(s.LastRsaAt > 0 ? $", dernier le {FtTime.Format(s.LastRsaAt)}" : "")}"), _ => { });
 
             if (s.Status == (int)RequestStatus.EnAttente)
             {
