@@ -245,24 +245,21 @@ namespace LorisCasino
 
         private Panel NewPanel(Player player, string section, UIPanel.PanelType type, Action refresh)
         {
-            Panel panel = Panels.Create($"{Cfg.PanelTitle} - {section}", type, player, refresh);
-            panel.subtitle = Credit;
-            return panel;
+            return Panels.Create($"{Cfg.PanelTitle} - {section}", type, player, refresh);
         }
 
-        /// <summary>Affiche le panel avec la signature "Created by Loris Strange".</summary>
+        /// <summary>
+        /// Affiche le panel avec la signature "Created by Loris Strange".
+        /// La zone de texte des panels Input / Text est petite : 3 lignes max (signature comprise)
+        /// pour Input, 5 pour Text, sinon le texte déborde sur le titre et la saisie.
+        /// </summary>
         private static void Show(Panel panel)
         {
-            string credit = Size(Italic(Color(Credit, Colors.Purple)), 14);
+            string credit = Italic(Color(Credit, Colors.Purple));
             if (panel.type == UIPanel.PanelType.Tab || panel.type == UIPanel.PanelType.TabPrice)
-            {
                 panel.AddTabLine(credit, _ => { });
-            }
             else
-            {
-                panel.TextLines.Add("");
                 panel.TextLines.Add(credit);
-            }
             panel.Display();
         }
 
@@ -461,17 +458,15 @@ namespace LorisCasino
             List<CasinoClient> players = await CasinoClient.Query(c => c.WeeklyBet > 0);
             List<CasinoClient> top = players.OrderByDescending(c => c.WeeklyWon - c.WeeklyBet).Take(10).ToList();
 
-            Panel panel = NewPanel(player, "Classement", UIPanel.PanelType.Text, () => OpenLeaderboard(player));
-            panel.TextLines.Add(Bold("Gains nets de la semaine"));
-            if (top.Count == 0) panel.TextLines.Add("Personne n'a encore joué cette semaine.");
+            Panel panel = NewPanel(player, "Classement", UIPanel.PanelType.Tab, () => OpenLeaderboard(player));
+            Info(panel, $"{Color("Remise à zéro :", Colors.Info)} {NextWeeklyReset():dd/MM HH:mm}");
+            if (top.Count == 0) Info(panel, "Personne n'a joué cette semaine");
             for (int i = 0; i < top.Count; i++)
             {
                 long net = top[i].WeeklyWon - top[i].WeeklyBet;
                 string netText = net >= 0 ? Color($"+{net}", Colors.Success) : Color($"{net}", Colors.Error);
-                panel.TextLines.Add($"{i + 1}. {top[i].Name} : {netText} (mises : {top[i].WeeklyBet})");
+                Info(panel, $"{i + 1}. {top[i].Name} : {netText}");
             }
-            panel.TextLines.Add("");
-            panel.TextLines.Add($"Prochaine remise à zéro : {NextWeeklyReset():dd/MM/yyyy HH:mm}");
             panel.PreviousButton();
             panel.CloseButton();
             Show(panel);
@@ -488,9 +483,9 @@ namespace LorisCasino
             { GameId.MachineASous, "Machine à sous" },
             { GameId.Blackjack, "Blackjack" },
             { GameId.Ticket, "Ticket à gratter" },
-            { GameId.De, "Dé - Double ou Rien" },
+            { GameId.De, "Dé" },
             { GameId.Coffre, "Coffre Mystère" },
-            { GameId.Multiplicateur, "Machine des Multiplicateurs" },
+            { GameId.Multiplicateur, "Multiplicateurs" },
         };
 
         private static bool IsFixedPrice(GameId game) => game == GameId.Ticket || game == GameId.Coffre;
@@ -506,7 +501,7 @@ namespace LorisCasino
         private string BetRange(GameId game)
         {
             GameSettings s = Game(game);
-            return IsFixedPrice(game) ? $"prix : {Tokens(Price(s))}" : $"mise : {MinBet(s)} à {MaxBet(s)}";
+            return IsFixedPrice(game) ? $"{Price(s)} jetons" : $"{MinBet(s)}-{MaxBet(s)}";
         }
 
         private async void OpenGamesMenu(Player player, bool back)
@@ -540,7 +535,7 @@ namespace LorisCasino
             switch (game)
             {
                 case GameId.PileOuFace:
-                    OpenBetPanel(player, game, back, new[] { "Gain : x2 (1 chance sur 2)" },
+                    OpenBetPanel(player, game, back, new[] { "Choisissez Pile ou Face.", "Gain : x2 (1 chance sur 2)" },
                         ("Pile", bet => PlayCoinFlip(player, bet, true)),
                         ("Face", bet => PlayCoinFlip(player, bet, false)));
                     break;
@@ -558,7 +553,7 @@ namespace LorisCasino
                 case GameId.MachineASous:
                     OpenBetPanel(player, game, back, new[]
                         {
-                            "3 identiques : Cerise x3, Citron x4, Orange x5,",
+                            "3 identiques : Cerise x3, Citron x4, Orange x5",
                             "Cloche x10, Étoile x20, 7 x50",
                             "2 identiques : x1,5",
                         },
@@ -567,8 +562,9 @@ namespace LorisCasino
                 case GameId.Blackjack:
                     OpenBetPanel(player, game, back, new[]
                         {
-                            "Tirer ou Rester, la banque tire jusqu'à 17.",
-                            "Victoire : x2 / Égalité : mise rendue",
+                            "Approchez-vous de 21 sans dépasser.",
+                            "La banque tire jusqu'à 17.",
+                            "Victoire : x2 - Égalité : mise rendue",
                         },
                         ("Distribuer", bet => PlayBlackjack(player, bet)));
                     break;
@@ -579,9 +575,9 @@ namespace LorisCasino
                 case GameId.Multiplicateur:
                     OpenBetPanel(player, game, back, new[]
                         {
-                            "Le multiplicateur monte à chaque palier :",
                             string.Join(" > ", MultiplierSteps.Select(m => "x" + m.ToString("0.0#", CultureInfo.InvariantCulture))),
-                            "Continuez pour monter, encaissez avant de tout perdre !",
+                            "Continuez pour monter le multiplicateur,",
+                            "encaissez avant de tout perdre !",
                         },
                         ("Lancer", bet => PlayMultiplier(player, bet)));
                     break;
@@ -602,9 +598,7 @@ namespace LorisCasino
             Action reopen = () => OpenBetPanel(player, game, back, rules, choices);
 
             Panel panel = NewPanel(player, GameNames[game], UIPanel.PanelType.Input, reopen);
-            panel.TextLines.Add($"{Color("Solde :", Colors.Info)} {Tokens(client.Tokens)}");
-            panel.TextLines.Add($"{Color("Mise :", Colors.Info)} {MinBet(s)} à {MaxBet(s)} jetons");
-            panel.TextLines.AddRange(rules);
+            panel.TextLines.Add($"{Color("Solde :", Colors.Info)} {client.Tokens} - {Color("Mise :", Colors.Info)} {MinBet(s)} à {MaxBet(s)}");
             panel.SetInputPlaceholder($"Votre mise ({MinBet(s)} - {MaxBet(s)})");
 
             foreach ((string label, Func<int, Task<bool>> play) in choices)
@@ -615,7 +609,17 @@ namespace LorisCasino
                         reopen();
                 });
             }
+            panel.NextButton("Règles", () => RulesPanel(player, game, rules));
             if (back) panel.PreviousButton();
+            panel.CloseButton();
+            Show(panel);
+        }
+
+        private void RulesPanel(Player player, GameId game, string[] rules)
+        {
+            Panel panel = NewPanel(player, $"Règles - {GameNames[game]}", UIPanel.PanelType.Text, () => RulesPanel(player, game, rules));
+            panel.TextLines.AddRange(rules);
+            panel.PreviousButton();
             panel.CloseButton();
             Show(panel);
         }
@@ -676,18 +680,20 @@ namespace LorisCasino
 
         private void ShowResult(Player player, GameId game, CasinoClient client, int stake, int payout, params string[] lines)
         {
-            Panel panel = NewPanel(player, $"{GameNames[game]} - Résultat", UIPanel.PanelType.Text,
+            Panel panel = NewPanel(player, "Résultat", UIPanel.PanelType.Text,
                 () => ShowResult(player, game, client, stake, payout, lines));
             panel.TextLines.AddRange(lines);
-            panel.TextLines.Add("");
-            int net = payout - stake;
-            if (net > 0) panel.TextLines.Add(Bold(Color($"GAGNÉ : +{Tokens(net)}", Colors.Success)));
-            else if (net == 0) panel.TextLines.Add(Bold(Color("ÉGALITÉ : mise rendue", Colors.Info)));
-            else panel.TextLines.Add(Bold(Color($"PERDU : -{Tokens(-net)}", Colors.Error)));
-            panel.TextLines.Add($"{Color("Nouveau solde :", Colors.Info)} {Tokens(client.Tokens)}");
+            panel.TextLines.Add($"{Outcome(payout - stake)} - {Color("Solde :", Colors.Info)} {client.Tokens}");
             panel.PreviousButton("Rejouer");
             panel.CloseButton();
             Show(panel);
+        }
+
+        private static string Outcome(int net)
+        {
+            if (net > 0) return Bold(Color($"GAGNÉ +{net}", Colors.Success));
+            if (net == 0) return Bold(Color("MISE RENDUE", Colors.Info));
+            return Bold(Color($"PERDU -{-net}", Colors.Error));
         }
 
         // ------------------------------------------------------------------
@@ -704,7 +710,7 @@ namespace LorisCasino
             string result = resultHeads ? "Pile" : "Face";
             await Settle(player, client, GameId.PileOuFace, bet, payout, $"{result}");
             ShowResult(player, GameId.PileOuFace, client, bet, payout,
-                $"Votre choix : {Bold(heads ? "Pile" : "Face")}", $"La pièce tombe sur : {Bold(result)}");
+                $"Votre choix : {Bold(heads ? "Pile" : "Face")} - La pièce : {Bold(result)}");
             return true;
         }
 
@@ -735,7 +741,7 @@ namespace LorisCasino
 
             await Settle(player, client, GameId.Roulette, bet, payout, result.ToString());
             ShowResult(player, GameId.Roulette, client, bet, payout,
-                $"Votre mise : {Tokens(bet)} sur {RouletteText(choice)}", $"La bille s'arrête sur : {RouletteText(result)}");
+                $"Mise sur {RouletteText(choice)} - La bille : {RouletteText(result)}");
             return true;
         }
 
@@ -791,7 +797,7 @@ namespace LorisCasino
 
             string line = "[ " + string.Join(" | ", reels.Select(r => Bold(Color(SlotSymbols[r].name, SlotSymbols[r].color)))) + " ]";
             await Settle(player, client, GameId.MachineASous, bet, payout, combo);
-            ShowResult(player, GameId.MachineASous, client, bet, payout, Size(line, 30), combo);
+            ShowResult(player, GameId.MachineASous, client, bet, payout, line, combo);
             return true;
         }
 
@@ -853,9 +859,8 @@ namespace LorisCasino
 
         private void BlackjackPanel(Player player, BlackjackGame game)
         {
-            Panel panel = NewPanel(player, "Blackjack - Partie", UIPanel.PanelType.Text, () => BlackjackPanel(player, game));
-            panel.TextLines.Add($"{Color("Mise :", Colors.Info)} {Tokens(game.Bet)}");
-            panel.TextLines.Add($"{Color("Vos cartes :", Colors.Info)} {Bold(Hand(game.PlayerCards))} ({Score(game.PlayerCards)})");
+            Panel panel = NewPanel(player, "Partie de Blackjack", UIPanel.PanelType.Text, () => BlackjackPanel(player, game));
+            panel.TextLines.Add($"{Color("Vous :", Colors.Info)} {Bold(Hand(game.PlayerCards))} ({Score(game.PlayerCards)})");
             if (game.Finished)
                 panel.TextLines.Add($"{Color("Banque :", Colors.Info)} {Bold(Hand(game.DealerCards))} ({Score(game.DealerCards)})");
             else
@@ -863,14 +868,13 @@ namespace LorisCasino
 
             if (game.Finished)
             {
-                panel.TextLines.Add("");
-                panel.TextLines.Add(Bold(game.Outcome));
-                panel.TextLines.Add($"{Color("Nouveau solde :", Colors.Info)} {Tokens(game.Client.Tokens)}");
+                panel.TextLines.Add($"{Outcome(game.Payout - game.Bet)} - {Color("Solde :", Colors.Info)} {game.Client.Tokens}");
                 panel.PreviousButton("Rejouer");
                 panel.CloseButton();
             }
             else
             {
+                panel.TextLines.Add($"{Color("Mise :", Colors.Info)} {Tokens(game.Bet)}");
                 panel.NextButton("Tirer", async () => await BlackjackHit(player, game));
                 panel.NextButton("Rester", async () => await BlackjackStand(player, game, true));
             }
@@ -935,7 +939,7 @@ namespace LorisCasino
             int roll = _rng.Next(1, 7);
             int payout = roll >= 5 ? bet * 2 : 0;
             await Settle(player, client, GameId.De, bet, payout, $"dé : {roll}");
-            ShowResult(player, GameId.De, client, bet, payout, $"Le dé roule... {Size(Bold(roll.ToString()), 30)}", "Il fallait un 5 ou un 6.");
+            ShowResult(player, GameId.De, client, bet, payout, $"Le dé fait {Bold(roll.ToString())} (il fallait 5 ou 6)");
             return true;
         }
 
@@ -1000,8 +1004,7 @@ namespace LorisCasino
 
         private void MultiplierPanel(Player player, MultiplierGame game)
         {
-            Panel panel = NewPanel(player, "Multiplicateurs - Partie", UIPanel.PanelType.Text, () => MultiplierPanel(player, game));
-            panel.TextLines.Add($"{Color("Mise :", Colors.Info)} {Tokens(game.Bet)}");
+            Panel panel = NewPanel(player, "Partie Multiplicateurs", UIPanel.PanelType.Text, () => MultiplierPanel(player, game));
 
             List<string> ladder = new List<string>();
             for (int i = 0; i < MultiplierSteps.Length; i++)
@@ -1013,19 +1016,15 @@ namespace LorisCasino
 
             if (game.Finished)
             {
-                panel.TextLines.Add("");
-                panel.TextLines.Add(game.Lost
-                    ? Bold(Color("Le multiplicateur a explosé : mise perdue !", Colors.Error))
-                    : Bold(Color($"Encaissé : {Tokens(MultiplierPayout(game))}", Colors.Success)));
-                panel.TextLines.Add($"{Color("Nouveau solde :", Colors.Info)} {Tokens(game.Client.Tokens)}");
+                int payout = game.Lost ? 0 : MultiplierPayout(game);
+                panel.TextLines.Add($"{Outcome(payout - game.Bet)} - {Color("Solde :", Colors.Info)} {game.Client.Tokens}");
                 panel.PreviousButton("Rejouer");
                 panel.CloseButton();
             }
             else
             {
                 int next = game.Step + 1;
-                panel.TextLines.Add($"{Color("Gain actuel :", Colors.Info)} {Tokens(MultiplierPayout(game))}");
-                panel.TextLines.Add($"Palier suivant : x{MultiplierSteps[next]:0.0#} - chance de réussite {MultiplierChances[next]} %");
+                panel.TextLines.Add($"{Color("Gain :", Colors.Info)} {MultiplierPayout(game)} - suivant : x{MultiplierSteps[next]:0.0#} ({MultiplierChances[next]} %)");
                 panel.NextButton("Continuer", async () => await MultiplierNext(player, game));
                 panel.NextButton("Encaisser", async () => await MultiplierCashOut(player, game));
             }
@@ -1044,8 +1043,8 @@ namespace LorisCasino
             int price = Price(Game(GameId.Ticket));
             Panel panel = NewPanel(player, GameNames[GameId.Ticket], UIPanel.PanelType.Tab, () => OpenTicket(player, back));
 
-            Info(panel, $"{Color("Solde :", Colors.Info)} {Tokens(client.Tokens)} - {Color("Prix :", Colors.Info)} {Tokens(price)}");
-            Info(panel, Color($"Grattez 1 case sur 8 : gains de 0 à {Tokens(price * TicketMultipliers.Max())}", Colors.Grey));
+            Info(panel, $"{Color("Solde :", Colors.Info)} {client.Tokens} - {Color("Prix :", Colors.Info)} {price}");
+            Info(panel, Color($"Gains de 0 à {price * TicketMultipliers.Max()} jetons", Colors.Grey));
             for (int i = 0; i < TicketMultipliers.Length; i++)
             {
                 int chosen = i;
@@ -1059,13 +1058,11 @@ namespace LorisCasino
                     int payout = price * grid[chosen];
                     await Settle(player, payer, GameId.Ticket, price, payout, $"case {chosen + 1} : {Tokens(payout)}");
 
-                    List<string> lines = new List<string> { $"Vous grattez la case {chosen + 1}...", "" };
-                    for (int c = 0; c < grid.Length; c++)
-                    {
-                        string value = $"Case {c + 1} : {Tokens(price * grid[c])}";
-                        lines.Add(c == chosen ? Bold(Color("> " + value, Colors.Warning)) : Color(value, Colors.Grey));
-                    }
-                    ShowResult(player, GameId.Ticket, payer, price, payout, lines.ToArray());
+                    // Toutes les cases sur une seule ligne, la case grattée en surbrillance
+                    string cases = string.Join(" ", grid.Select((m, c) => c == chosen
+                        ? Bold(Color($"[{price * m}]", Colors.Warning))
+                        : Color((price * m).ToString(), Colors.Grey)));
+                    ShowResult(player, GameId.Ticket, payer, price, payout, $"Case {chosen + 1} : {Bold(Tokens(payout))}", cases);
                 });
             }
             panel.AddButton("Gratter", _ => panel.SelectTab());
@@ -1086,8 +1083,8 @@ namespace LorisCasino
             int prize = Math.Max(0, s.Prize);
             Panel panel = NewPanel(player, GameNames[GameId.Coffre], UIPanel.PanelType.Tab, () => OpenChests(player, back));
 
-            Info(panel, $"{Color("Solde :", Colors.Info)} {Tokens(client.Tokens)} - {Color("Prix :", Colors.Info)} {Tokens(price)}");
-            Info(panel, Color($"1 coffre gagnant sur 3 : +{Tokens(prize)}", Colors.Grey));
+            Info(panel, $"{Color("Solde :", Colors.Info)} {client.Tokens} - {Color("Prix :", Colors.Info)} {price}");
+            Info(panel, Color($"1 coffre sur 3 gagne {prize} jetons", Colors.Grey));
             for (int i = 0; i < 3; i++)
             {
                 int chosen = i;
@@ -1101,9 +1098,9 @@ namespace LorisCasino
                     int payout = winner == chosen ? prize : 0;
                     await Settle(player, payer, GameId.Coffre, price, payout, $"coffre {chosen + 1}, gagnant : {winner + 1}");
                     ShowResult(player, GameId.Coffre, payer, price, payout,
-                        $"Vous ouvrez le coffre {chosen + 1}...",
-                        winner == chosen ? Color($"Il contient {Tokens(prize)} !", Colors.Success) : Color("Il est vide.", Colors.Error),
-                        $"Le coffre gagnant était le n°{winner + 1}.");
+                        winner == chosen
+                            ? Color($"Coffre {chosen + 1} : {Tokens(prize)} !", Colors.Success)
+                            : $"Coffre {chosen + 1} : {Color("vide", Colors.Error)} - gagnant : n°{winner + 1}");
                 });
             }
             panel.AddButton("Ouvrir", _ => panel.SelectTab());
@@ -1138,8 +1135,7 @@ namespace LorisCasino
         {
             CasinoClient client = await GetClient(player);
             Panel panel = NewPanel(player, "Achat de jetons", UIPanel.PanelType.Input, () => BuyTokens(player));
-            panel.TextLines.Add($"{Color("Solde :", Colors.Info)} {Tokens(client.Tokens)}");
-            panel.TextLines.Add($"{Color("Argent liquide :", Colors.Info)} {Euros(player.Money)}");
+            panel.TextLines.Add($"{Color("Solde :", Colors.Info)} {client.Tokens} - {Color("Liquide :", Colors.Info)} {Euros(player.Money)}");
             panel.TextLines.Add($"{Color("Prix :", Colors.Info)} 1 jeton = {Euros(Cfg.TokenPrice)}");
             panel.SetInputPlaceholder("Nombre de jetons à acheter");
 
@@ -1169,8 +1165,7 @@ namespace LorisCasino
         {
             CasinoClient client = await GetClient(player);
             Panel panel = NewPanel(player, "Revente de jetons", UIPanel.PanelType.Input, () => SellTokens(player));
-            panel.TextLines.Add($"{Color("Solde :", Colors.Info)} {Tokens(client.Tokens)}");
-            panel.TextLines.Add($"{Color("Reprise :", Colors.Info)} 1 jeton = {Euros(ResaleRate)} ({Cfg.ResalePercent} %)");
+            panel.TextLines.Add($"{Color("Solde :", Colors.Info)} {client.Tokens} - {Color("Reprise :", Colors.Info)} 1 jeton = {Euros(ResaleRate)}");
             panel.SetInputPlaceholder("Nombre de jetons à revendre");
 
             panel.PreviousButtonWithAction("Revendre", async () =>
@@ -1203,7 +1198,7 @@ namespace LorisCasino
             }
             Panel panel = NewPanel(player, "Espace employé", UIPanel.PanelType.Tab, () => OpenEmployeeSpace(player, back));
 
-            Link(panel, "Convertir les jetons d'un joueur proche (jetons > €)", () => ConvertNearby(player));
+            Link(panel, "Convertir les jetons d'un joueur proche", () => ConvertNearby(player));
             if (IsCasinoStaff(player))
                 Link(panel, "Gérer les jetons d'un joueur", () => TokenPlayersList(player));
             if (CanManageStaff(player))
@@ -1228,10 +1223,8 @@ namespace LorisCasino
             CasinoClient targetClient = await GetClient(target);
 
             Panel panel = NewPanel(player, "Conversion jetons > €", UIPanel.PanelType.Input, () => ConvertNearby(player));
-            panel.TextLines.Add($"{Color("Joueur :", Colors.Info)} {target.FullName}");
-            panel.TextLines.Add($"{Color("Jetons :", Colors.Info)} {Tokens(targetClient.Tokens)}");
-            panel.TextLines.Add($"{Color("Taux :", Colors.Info)} 1 jeton = {Euros(ResaleRate)}");
-            panel.TextLines.Add("Le joueur devra confirmer la conversion.");
+            panel.TextLines.Add($"{Color("Joueur :", Colors.Info)} {target.FullName} ({Tokens(targetClient.Tokens)})");
+            panel.TextLines.Add($"1 jeton = {Euros(ResaleRate)} - le joueur doit accepter");
             panel.SetInputPlaceholder("Nombre de jetons à convertir");
 
             panel.PreviousButtonWithAction("Proposer", () =>
@@ -1251,9 +1244,8 @@ namespace LorisCasino
         {
             Panel panel = NewPanel(target, "Conversion de jetons", UIPanel.PanelType.Text,
                 () => ConfirmConversion(employee, target, amount, euros));
-            panel.TextLines.Add($"{employee.FullName} vous propose de convertir");
+            panel.TextLines.Add($"{employee.FullName} vous propose :");
             panel.TextLines.Add(Bold($"{Tokens(amount)} contre {Euros(euros)}"));
-            panel.TextLines.Add("Acceptez-vous ?");
 
             panel.CloseButtonWithAction("Accepter", async () =>
             {
@@ -1307,7 +1299,7 @@ namespace LorisCasino
         private void SearchClientById(Player staff)
         {
             Panel panel = NewPanel(staff, "Rechercher un joueur", UIPanel.PanelType.Input, () => SearchClientById(staff));
-            panel.TextLines.Add("ID du personnage (visible dans la liste des joueurs).");
+            panel.TextLines.Add("ID du personnage du joueur");
             panel.SetInputPlaceholder("ID du personnage");
             panel.NextButton("Rechercher", () =>
             {
@@ -1334,9 +1326,7 @@ namespace LorisCasino
             }
 
             Panel panel = NewPanel(staff, "Gestion des jetons", UIPanel.PanelType.Input, () => ManageTokens(staff, characterId));
-            panel.TextLines.Add($"{Color("Joueur :", Colors.Info)} {client.Name} (ID {client.CharacterId})");
-            panel.TextLines.Add($"{Color("Solde :", Colors.Info)} {Tokens(client.Tokens)}");
-            panel.TextLines.Add($"{Color("Cette semaine :", Colors.Info)} misé {client.WeeklyBet} / gagné {client.WeeklyWon}");
+            panel.TextLines.Add($"{client.Name} (ID {client.CharacterId}) : {Bold(Tokens(client.Tokens))}");
             panel.SetInputPlaceholder("Nombre de jetons");
 
             panel.AddButton("Ajouter", async _ =>
@@ -1378,7 +1368,7 @@ namespace LorisCasino
             if (staffList.Count == 0) Info(panel, "Aucun membre du staff enregistré.");
             foreach (CasinoStaff staff in staffList)
             {
-                panel.AddTabLine($"{staff.Name} {Color($"[ID {staff.CharacterId}] ajouté par {staff.AddedBy}", Colors.Grey)}", async _ =>
+                panel.AddTabLine($"{staff.Name} {Color($"[ID {staff.CharacterId}]", Colors.Grey)}", async _ =>
                 {
                     if (await staff.Delete())
                     {
@@ -1479,24 +1469,24 @@ namespace LorisCasino
             Link(panel, $"Revente des jetons : {Bold(Cfg.ResalePercent + " %")}", () =>
                 EditInt(player, "Revente des jetons (%)", Cfg.ResalePercent, 1, 100, v => Cfg.ResalePercent = v));
             Link(panel, $"Récompense quotidienne : {Bold(Tokens(Cfg.DailyReward))}", () =>
-                EditInt(player, "Récompense quotidienne (0 = désactivée)", Cfg.DailyReward, 0, 100000, v => Cfg.DailyReward = v));
-            panel.AddTabLine($"Revente libre en boutique : {YesNo(Cfg.ShopResale)}", async _ =>
+                EditInt(player, "Récompense / jour (0 = off)", Cfg.DailyReward, 0, 100000, v => Cfg.DailyReward = v));
+            panel.AddTabLine($"Revente en boutique : {YesNo(Cfg.ShopResale)}", async _ =>
             {
                 Cfg.ShopResale = !Cfg.ShopResale;
                 await ConfigChanged(player, $"Revente en boutique : {(Cfg.ShopResale ? "oui" : "non")}");
                 panel.Refresh();
             });
-            panel.AddTabLine($"Menu casino partout (AAMenu > Interactions) : {YesNo(Cfg.MenuAnywhere)}", async _ =>
+            panel.AddTabLine($"Menu casino partout : {YesNo(Cfg.MenuAnywhere)}", async _ =>
             {
                 Cfg.MenuAnywhere = !Cfg.MenuAnywhere;
                 await ConfigChanged(player, $"Menu casino partout : {(Cfg.MenuAnywhere ? "oui" : "non")}");
                 panel.Refresh();
             });
-            Link(panel, Color("Jeux (activation, mises)", Colors.Info), () => GamesConfig(player));
+            Link(panel, Color("Jeux", Colors.Info), () => GamesConfig(player));
             Link(panel, Color("Points du casino", Colors.Info), () => PointsMenu(player));
             Link(panel, Color("Discord", Colors.Info), () => DiscordConfig(player));
-            Link(panel, Color("Espace employé (jetons, staff)", Colors.Orange), () => OpenEmployeeSpace(player, true));
-            Link(panel, Color("Remettre le classement à zéro", Colors.Error), () => ConfirmWeeklyReset(player));
+            Link(panel, Color("Espace employé", Colors.Orange), () => OpenEmployeeSpace(player, true));
+            Link(panel, Color("Remise à zéro du classement", Colors.Error), () => ConfirmWeeklyReset(player));
 
             SelectButton(panel);
             if (back) panel.PreviousButton();
@@ -1517,10 +1507,10 @@ namespace LorisCasino
         private void EditValue(Player player, string label, string current, bool closeAfter, Func<string, string> apply)
         {
             if (!CheckAdmin(player)) return;
-            Panel panel = NewPanel(player, $"Modifier : {label}", UIPanel.PanelType.Input,
+            Panel panel = NewPanel(player, "Modifier", UIPanel.PanelType.Input,
                 () => EditValue(player, label, current, closeAfter, apply));
             panel.TextLines.Add(Bold(label));
-            panel.TextLines.Add($"{Color("Valeur actuelle :", Colors.Info)} {current}");
+            panel.TextLines.Add($"{Color("Actuel :", Colors.Info)} {Truncate(current, 35)}");
             panel.SetInputPlaceholder(current);
 
             Func<Task<bool>> save = async () =>
@@ -1663,7 +1653,7 @@ namespace LorisCasino
                     return null;
                 }));
             Link(panel, $"Couleur des embeds : {Color(Cfg.WebhookColor, Cfg.WebhookColor.StartsWith("#") ? Cfg.WebhookColor : "#" + Cfg.WebhookColor)}", () =>
-                EditValue(player, "Couleur hex des embeds (ex : #9B59B6)", Cfg.WebhookColor, false, v =>
+                EditValue(player, "Couleur hex (ex : #9B59B6)", Cfg.WebhookColor, false, v =>
                 {
                     if (!HexColor.IsMatch(v)) return "Couleur invalide (format #RRGGBB).";
                     Cfg.WebhookColor = v.StartsWith("#") ? v.ToUpperInvariant() : "#" + v.ToUpperInvariant();
@@ -1690,8 +1680,8 @@ namespace LorisCasino
         {
             if (!CheckAdmin(player)) return;
             Panel panel = NewPanel(player, "Remise à zéro", UIPanel.PanelType.Text, () => ConfirmWeeklyReset(player));
-            panel.TextLines.Add("Remettre à zéro les mises et gains de la semaine de tous les joueurs ?");
-            panel.TextLines.Add(Color("Les jetons des joueurs ne sont pas touchés.", Colors.Grey));
+            panel.TextLines.Add("Remettre le classement de la semaine à zéro ?");
+            panel.TextLines.Add(Color("Les jetons ne sont pas touchés.", Colors.Grey));
             panel.PreviousButtonWithAction(Color("Confirmer", Colors.Error), async () =>
             {
                 await WeeklyReset(player.FullName);
@@ -1839,8 +1829,7 @@ namespace LorisCasino
         {
             string label = PointLabel((int)kind, gameKey);
             Panel panel = NewPanel(player, "Nom du point", UIPanel.PanelType.Input, () => NewPointName(player, kind, gameKey));
-            panel.TextLines.Add($"{Color("Type :", Colors.Info)} {label}");
-            panel.TextLines.Add("Nom du modèle (laisser vide pour le nom par défaut).");
+            panel.TextLines.Add($"{Color("Type :", Colors.Info)} {label} (nom facultatif)");
             panel.SetInputPlaceholder(label);
 
             panel.PreviousButtonWithAction("Créer", async () =>
@@ -1915,7 +1904,7 @@ namespace LorisCasino
         private void RenamePointModel(Player player, CasinoPoint model)
         {
             Panel panel = NewPanel(player, "Renommer un modèle", UIPanel.PanelType.Input, () => RenamePointModel(player, model));
-            panel.TextLines.Add($"Nouveau nom pour « {model.PatternName} »");
+            panel.TextLines.Add($"Renommer « {model.PatternName} »");
             panel.SetInputPlaceholder(model.PatternName ?? "");
             panel.PreviousButtonWithAction("Valider", async () =>
             {
