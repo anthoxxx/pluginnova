@@ -1,30 +1,4 @@
-<p align="center">
-  <img src="media/banniere.png" alt="Trash by Loris" width="720">
-</p>
-
-<p align="center">
-  <b>Des poubelles sur ta map : les joueurs y jettent leurs objets, et ils disparaissent pour de bon.</b><br>
-  Plugin serveur pour <b>Nova-Life : Amboise</b>
-</p>
-
-<p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.0.0-3fd18b">
-  <img alt="Nova-Life" src="https://img.shields.io/badge/Nova--Life-1.69-3b8cff">
-  <img alt="ModKit" src="https://img.shields.io/badge/requiert-ModKit%20%2B%20AAMenu-orange">
-  <img alt="Auteur" src="https://img.shields.io/badge/auteur-Loris-lightgrey">
-</p>
-
----
-
-## 🎬 Aperçu
-
-<p align="center">
-  <img src="media/apercu.gif" alt="Aperçu du plugin" width="720">
-</p>
-
-▶️ Vidéo de présentation complète (avec musique) : [`media/presentation.mp4`](media/presentation.mp4)
-
----
+# Trash by Loris
 
 ## 🗑️ Présentation
 
