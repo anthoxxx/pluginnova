@@ -63,3 +63,13 @@ Tu peux placer le même modèle plusieurs fois, à plusieurs endroits.
 2. Choisis l'objet à jeter dans ton inventaire → **Jeter**.
 3. Indique la quantité → **Jeter** (ou **Tout jeter**).
 4. L'objet est détruit. ⚠️ **Il ne pourra pas être récupéré.**
+
+## ⚖️ Licence
+
+© 2026 Loris. Tous droits réservés.
+
+Tu peux utiliser ce plugin sur **ton propre serveur**. Il est **interdit** de le revendre,
+de le redistribuer, de le partager, de le republier sous un autre nom, de retirer les crédits
+ou de le modifier pour le diffuser.
+
+Conditions complètes : [`LICENSE.md`](LICENSE.md)
