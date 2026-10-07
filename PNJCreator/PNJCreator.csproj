@@ -8,6 +8,9 @@
     <Version>1.0.0</Version>
     <Authors>Loris Strange</Authors>
     <Product>PNJ by Loris Strange</Product>
+    <Company>Loris Strange</Company>
+    <Description>PNJ by Loris Strange — Créé par Loris Strange</Description>
+    <Copyright>Créé par Loris Strange</Copyright>
     <!-- Dossier contenant TOUTES les DLL nécessaires (voir libs/README.md) -->
     <LibsPath Condition="'$(LibsPath)' == ''">$(MSBuildThisFileDirectory)libs</LibsPath>
   </PropertyGroup>

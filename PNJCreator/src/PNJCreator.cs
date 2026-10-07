@@ -17,6 +17,7 @@ namespace PNJCreator
     {
         public const string DisplayName = "PNJ by Loris Strange";
         public const string Version = "1.0.0";
+        public const string Credit = "Créé par Loris Strange";
 
         public DataStore Store;
         public NpcManager Npcs;
@@ -74,7 +75,7 @@ namespace PNJCreator
                         player.SendText("<color=#abd9fc>[PNJ debug]</color> " + line.TrimEnd('\r'));
                 })).Register();
 
-            Debug.Log($"[PNJCreator] {DisplayName} v{Version} chargé ({Store.Config.Npcs.Count} PNJ, IA : {Store.Config.Ai.ActiveProvider}).");
+            Debug.Log($"[PNJCreator] {DisplayName} v{Version} — {Credit} — chargé ({Store.Config.Npcs.Count} PNJ, IA : {Store.Config.Ai.ActiveProvider}).");
         }
 
         // ------------------------------------------------------------------

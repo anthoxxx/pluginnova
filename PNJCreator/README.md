@@ -1,5 +1,7 @@
 # PNJ by Loris Strange (PNJCreator)
 
+**Créé par Loris Strange.**
+
 Plugin serveur Nova-Life: Amboise pour peupler la ville de commerçants, gardes, PNJ de métier
 ou personnages d'ambiance — statiques ou en patrouille — avec une apparence sur mesure et une
 IA conversationnelle qui discute en RP avec les joueurs.

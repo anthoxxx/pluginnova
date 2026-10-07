@@ -151,6 +151,8 @@ namespace PNJCreator
                 player.Notify(Title, $"Configuration rechargée : {Store.Config.Npcs.Count} PNJ.", NotificationManager.Type.Success);
                 Main(player);
             });
+            Line(panel, player, PNJCreator.Credit, "v" + PNJCreator.Version, Icon("credit"), () =>
+                Info(player, Title, $"{PNJCreator.DisplayName}\nVersion {PNJCreator.Version}\n\n{PNJCreator.Credit}", () => Main(player)));
             Show(player, panel, null);
         }
 
