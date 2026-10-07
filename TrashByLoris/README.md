@@ -89,37 +89,3 @@ Tu peux placer le même modèle plusieurs fois, à plusieurs endroits.
 2. Choisis l'objet à jeter dans ton inventaire → **Jeter**.
 3. Indique la quantité → **Jeter** (ou **Tout jeter**).
 4. L'objet est détruit. ⚠️ **Il ne pourra pas être récupéré.**
-
-## ❓ FAQ
-
-**Un admin peut-il récupérer un objet jeté par erreur ?**
-Non. Le plugin ne garde aucune trace des objets jetés : ils sont supprimés directement.
-
-**Où sont enregistrées les poubelles ?**
-Dans la base de données de ModKit (`Plugins/ModKit/data.sqlite`).
-
-**Je ne vois pas les poubelles après les avoir placées.**
-Les points bleus sont envoyés aux joueurs quand leur personnage apparaît. Reconnecte-toi si besoin.
-
-**La commande `/trash` me dit « Vous devez être staff et en service admin ».**
-Il faut être admin **et** avoir activé le service admin.
-
-**Peut-il tourner en même temps que le plugin `Poubelle` ?**
-Oui, ils utilisent des noms de table et des commandes différents.
-
-## 🧑‍💻 Compiler soi-même
-
-1. Copie les 7 DLL listées dans [`libs/README.md`](libs/README.md) dans `TrashByLoris/libs/`.
-2. Ouvre **`TrashByLoris.csproj`** dans Visual Studio, ou lance :
-   ```bash
-   dotnet build -c Release
-   ```
-3. La DLL se trouve dans `bin/Release/net472/TrashByLoris.dll`.
-
-Projet SDK-style · `net472` · C# 11.
-
----
-
-<p align="center">
-  Fait avec 💚 par <b>Loris</b>
-</p>
