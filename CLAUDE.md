@@ -147,3 +147,7 @@ l'utilisateur, non versionnées, à mettre dans `<Plugin>/libs/`).
 - Projet : SDK-style, `net472`, `LangVersion 11.0`, références en `<Private>false</Private>`.
 
 Exemple complet : `Poubelle/`.
+
+Exemple de plugin autonome (sans ModKit, hérite de `Plugin`) : `PNJCreator/` — PNJ networkés
+créés à partir du prefab joueur (`LifeNetworkManager.malePrefab`), menus `UIPanel`, appels HTTP
+hors thread principal avec retour via un `MonoBehaviour` du plugin.
