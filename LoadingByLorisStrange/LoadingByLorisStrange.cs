@@ -48,6 +48,10 @@ namespace LoadingByLorisStrange
         {
             PlayVideo(player, config.VideoUrl);
 
+            // Grand texte au centre de l'écran pendant quelques secondes
+            if (config.CenterTextSeconds > 0)
+                player.setup.TargetShowCenterText(config.Title, config.CenterSubtitle, config.CenterTextSeconds);
+
             UIPanel panel = new UIPanel(config.Title, UIPanel.PanelType.Text)
                 .SetText(config.Message);
             if (config.AllowSkip)
@@ -56,16 +60,16 @@ namespace LoadingByLorisStrange
         }
 
         /// <summary>
-        /// Lance la vidéo chez le joueur.
-        /// À COMPLÉTER : l'appel exact de l'API Nova-Life (1.69) pour lire une vidéo
-        /// côté client n'a pas pu être vérifié ; remplacer le contenu de cette méthode
-        /// par cet appel. Tout le reste du plugin (config, connexion, commandes) est prêt.
+        /// Envoie le lien de la vidéo au joueur.
+        /// Le jeu n'a pas d'appel serveur pour lire une vidéo en plein écran : le seul
+        /// qui envoie une URL au client est TargetSetInitialAddressTo, qui définit la
+        /// page d'accueil du navigateur de la tablette.
         /// </summary>
         private void PlayVideo(Player player, string videoUrl)
         {
             if (string.IsNullOrWhiteSpace(videoUrl))
                 return;
-            Debug.Log($"[{Name}] vidéo pour {player.FullName} : {videoUrl}");
+            player.setup.TargetSetInitialAddressTo(videoUrl);
         }
 
         private void LoadConfig()
@@ -124,5 +128,7 @@ namespace LoadingByLorisStrange
         public string Message = "Bienvenue sur le serveur !";
         public bool AllowSkip = true;
         public string SkipButtonText = "Passer";
+        public string CenterSubtitle = "Chargement en cours...";
+        public float CenterTextSeconds = 5f;
     }
 }
