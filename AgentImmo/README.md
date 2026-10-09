@@ -23,7 +23,7 @@ entreprise devienne une agence immobilière, au choix :
 ## Agents immobiliers
 Menu AAMenu → **Métier → Agence immobilière** (ou `/immo` → *Espace agent immobilier*) :
 - **Ajouter un terrain au catalogue** : ID du terrain (pré-rempli avec le terrain où vous êtes),
-  nom, type (vente, location ou les deux), prix de vente et/ou loyer par jour. Votre position
+  nom (adresse du terrain par défaut), type (vente, location ou les deux), prix de vente et/ou loyer par jour. Votre position
   sert de point GPS pour les clients.
 - **Catalogue de l'agence** : faire une offre à un joueur proche, modifier nom / description /
   type / prix / GPS, retirer du catalogue, remettre en vente, supprimer.
@@ -49,7 +49,7 @@ terrain revient à son propriétaire précédent et le bien redevient disponible
 ## Administration
 AAMenu → **Administration → Plugins → Agent Immo** :
 historique complet de toutes les agences, tous les biens, toutes les locations, statistiques
-globales, agences autorisées, paramètres et **diagnostic d'un terrain**.
+globales, agences autorisées, paramètres et **infos d'un terrain**.
 
 Paramètres (modifiables en jeu ou dans `Plugins/ModKit/AgentImmo/config.json`) :
 
@@ -69,13 +69,20 @@ Paramètres (modifiables en jeu ou dans `Plugins/ModKit/AgentImmo/config.json`) 
 Les données sont dans la base ModKit (`Plugins/ModKit/data.sqlite`) : tables
 `ImmoProperty`, `ImmoRental`, `ImmoLog`, `ImmoRequest`.
 
-## À vérifier au premier lancement
-Le propriétaire d'un terrain, l'argent des joueurs et le compte des entreprises ne sont pas
-exposés par ModKit. Le plugin y accède **par réflexion** (`Nova.a` →
-`permissions.owner.characterId`, `character.Money` / `Bank`, `AddMoney`, `biz.Bank`).
-Faites un essai avec **Administration → Agent Immo → Diagnostic d'un terrain** : il affiche
-le propriétaire lu et ce que le plugin voit du terrain (détail complet dans la console).
+## Fonctionnement des terrains
+Le plugin utilise la même méthode que l'achat d'un terrain dans le jeu : il change
+`permissions.owner` du terrain (`Nova.a.GetAreaById`) puis l'enregistre (`LifeArea.Save()`).
+- **Vente** : le terrain est donné au client.
+- **Location** : le terrain est donné au locataire pendant le bail, puis rendu à son ancien
+  propriétaire (joueur ou entreprise) à la fin.
+- Paiement du client : espèces (`AddMoney`) ou carte (`AddBankMoney`). La commission va dans
+  le portefeuille de l'agent (ou sa banque s'il est plein), le reste sur le compte de
+  l'entreprise (`Bizs.AddBankMoney`).
+- Le GPS utilise la position enregistrée par l'agent, sinon la position du terrain dans le jeu.
 
-Si l'attribution automatique échoue, la vente est quand même enregistrée, le client et
-l'agent sont prévenus et l'historique indique **« ATTRIBUTION MANUELLE REQUISE »** : le staff
-donne alors le terrain à la main. On peut aussi désactiver `AutoTransferTerrain`.
+**Administration → Agent Immo → Infos d'un terrain** affiche l'adresse, le propriétaire, le
+prix du jeu, et l'état du terrain dans le catalogue.
+
+Si `AutoTransferTerrain` est désactivé, ou si un terrain est introuvable, la transaction est
+quand même enregistrée avec la mention **« ATTRIBUTION MANUELLE REQUISE »** et le staff donne
+le terrain à la main.

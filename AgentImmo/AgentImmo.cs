@@ -1,17 +1,16 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Reflection;
-using System.Text;
 using System.Threading.Tasks;
 using Life;
 using Life.BizSystem;
+using Life.AreaSystem;
 using Life.CheckpointSystem;
 using Life.DB;
 using Life.Network;
+using Life.PermissionSystem;
 using Life.UI;
 using ModKit.Helper;
 using ModKit.Helper.DiscordHelper;
@@ -241,8 +240,7 @@ namespace AgentImmo
             if (!string.IsNullOrEmpty(property.Description))
                 panel.TextLines.Add(Italic(property.Description));
 
-            if (property.HasPosition)
-                panel.AddTabLine("Me guider jusqu'au terrain (GPS)", _ => SetGps(player, property));
+            panel.AddTabLine("Me guider jusqu'au terrain (GPS)", _ => SetGps(player, property));
             if (property.Mode != PropertyMode.Location)
                 panel.AddTabLine("Je souhaite acheter ce bien", async _ => await CreateRequest(player, property, RequestKind.Achat));
             if (property.Mode != PropertyMode.Vente)
@@ -257,8 +255,15 @@ namespace AgentImmo
 
         private void SetGps(Player player, ImmoProperty property)
         {
+            Vector3? target = property.HasPosition ? property.Position : GameApi.GetPosition(property.TerrainId);
+            if (!target.HasValue)
+            {
+                Notify(player, "Position du terrain inconnue.", NotificationManager.Type.Error);
+                return;
+            }
+
             NCheckpoint checkpoint = null;
-            checkpoint = new NCheckpoint(player.netId, property.Position, _ =>
+            checkpoint = new NCheckpoint(player.netId, target.Value, _ =>
             {
                 player.DestroyCheckpoint(checkpoint);
                 Notify(player, $"Vous êtes arrivé à « {property.Name} ».", NotificationManager.Type.Success);
@@ -380,7 +385,7 @@ namespace AgentImmo
             }
 
             double total = current.RentPerDay * days;
-            if (!GameBridge.TryDebit(player, total, fromBank, $"Prolongation location terrain {current.TerrainId}"))
+            if (!GameApi.TryDebit(player, total, fromBank, $"Prolongation location terrain {current.TerrainId}"))
             {
                 Notify(player, $"Fonds insuffisants ({Money(total)} nécessaires).", NotificationManager.Type.Error);
                 return false;
@@ -536,8 +541,7 @@ namespace AgentImmo
                 await property.Save();
                 Notify(player, "Position GPS du bien mise à jour.", NotificationManager.Type.Success);
             });
-            if (property.HasPosition)
-                panel.AddTabLine("Me guider jusqu'au terrain (GPS)", _ => SetGps(player, property));
+            panel.AddTabLine("Me guider jusqu'au terrain (GPS)", _ => SetGps(player, property));
             if (property.Status != PropertyStatus.Loue)
                 panel.AddTabLine(Color("Supprimer définitivement", Colors.Error), _ => ConfirmDeleteProperty(player, property));
 
@@ -630,9 +634,9 @@ namespace AgentImmo
             panel.NextButton("Suivant", async () =>
             {
                 string input = string.IsNullOrWhiteSpace(panel.inputText) && currentArea != 0 ? currentArea.ToString() : panel.inputText;
-                if (!int.TryParse(input?.Trim(), out int terrainId) || terrainId <= 0)
+                if (!int.TryParse(input?.Trim(), out int terrainId) || GameApi.GetArea(terrainId) == null)
                 {
-                    Notify(player, "ID de terrain invalide.", NotificationManager.Type.Error);
+                    Notify(player, "Terrain introuvable.", NotificationManager.Type.Error);
                     AddPropertyTerrain(player, draft);
                     return;
                 }
@@ -658,13 +662,17 @@ namespace AgentImmo
         public void AddPropertyName(Player player, ImmoProperty draft)
         {
             Panel panel = PanelHelper.Create("Nouveau bien (2/4) : nom", UIPanel.PanelType.Input, player, () => AddPropertyName(player, draft));
+            LifeArea area = GameApi.GetArea(draft.TerrainId);
+            string defaultName = string.IsNullOrEmpty(area?.address) ? $"Terrain n°{draft.TerrainId}" : area.address;
             panel.TextLines.Add("Nom affiché aux clients (ex. « Villa avec piscine », « Entrepôt du port »).");
-            panel.SetInputPlaceholder($"Terrain n°{draft.TerrainId}");
+            if (area != null)
+                panel.TextLines.Add(Italic($"Prix de ce terrain dans le jeu : {Money(area.price)}"));
+            panel.SetInputPlaceholder(defaultName);
 
             panel.NextButton("Suivant", () =>
             {
                 string name = panel.inputText?.Trim();
-                draft.Name = string.IsNullOrEmpty(name) ? $"Terrain n°{draft.TerrainId}" : name;
+                draft.Name = string.IsNullOrEmpty(name) ? defaultName : name;
                 AddPropertyMode(player, draft, false);
             });
             panel.PreviousButton();
@@ -857,7 +865,7 @@ namespace AgentImmo
 
             double total = isRent ? property.RentPerDay * days : property.SalePrice;
             string reason = $"{(isRent ? "Location" : "Achat")} terrain {property.TerrainId}";
-            if (!GameBridge.TryDebit(client, total, fromBank, reason))
+            if (!GameApi.TryDebit(client, total, fromBank, reason))
             {
                 Notify(client, $"Fonds insuffisants ({Money(total)} nécessaires).", NotificationManager.Type.Error);
                 Notify(agent, $"{client.FullName} n'a pas les fonds nécessaires.", NotificationManager.Type.Warning);
@@ -867,12 +875,11 @@ namespace AgentImmo
             // Encaissement : commission pour l'agent, le reste sur le compte de l'agence
             double commission = Math.Round(total * Config.CommissionPercent / 100.0, 2);
             string payment = PayAgency(property.BizId, total - commission, agent, reason);
-            if (commission > 0 && !GameBridge.Credit(agent, commission, $"Commission {reason}"))
-                payment += $" Commission de {Money(commission)} non versée à l'agent.";
+            GameApi.Credit(agent, commission, $"Commission {reason}");
 
             // Attribution du terrain dans le jeu
-            int previousOwner = GameBridge.GetTerrainOwner(property.TerrainId) ?? 0;
-            bool transferred = !Config.AutoTransferTerrain || GameBridge.SetTerrainOwner(property.TerrainId, client.character.Id);
+            (int previousOwner, uint previousGroup) = GameApi.GetOwner(property.TerrainId);
+            bool transferred = !Config.AutoTransferTerrain || GameApi.SetOwner(property.TerrainId, client.character.Id);
 
             property.OwnerId = client.character.Id;
             property.OwnerName = client.FullName;
@@ -893,6 +900,7 @@ namespace AgentImmo
                     TenantName = client.FullName,
                     AgentName = agent.FullName,
                     PreviousOwnerId = previousOwner,
+                    PreviousGroupId = previousGroup,
                     RentPerDay = property.RentPerDay,
                     StartAt = Now(),
                     EndAt = endAt,
@@ -936,12 +944,15 @@ namespace AgentImmo
         private string PayAgency(int bizId, double amount, Player agent, string reason)
         {
             if (amount <= 0) return "";
-            if (GameBridge.CreditBiz(bizId, amount))
+            if (GameApi.CreditBiz(bizId, amount, reason))
                 return $"{Money(amount)} versés sur le compte de l'agence.";
-            if (agent != null && GameBridge.Credit(agent, amount, reason))
-                return $"Compte de l'agence inaccessible : {Money(amount)} versés à l'agent.";
+            if (agent != null)
+            {
+                GameApi.Credit(agent, amount, reason);
+                return $"Agence introuvable : {Money(amount)} versés à l'agent.";
+            }
             Logger.LogError(PluginInformations.SourceName, $"{Money(amount)} n'ont pas pu être versés à l'agence {bizId} ({reason}).");
-            return $"{Money(amount)} NON VERSÉS (compte de l'agence inaccessible).";
+            return $"{Money(amount)} NON VERSÉS (agence introuvable).";
         }
 
         // ---------------- Demandes des clients ----------------
@@ -1054,7 +1065,7 @@ namespace AgentImmo
             rental.EndedAt = Now();
             await rental.Save();
 
-            bool restored = !Config.AutoTransferTerrain || GameBridge.SetTerrainOwner(rental.TerrainId, rental.PreviousOwnerId);
+            bool restored = !Config.AutoTransferTerrain || GameApi.SetOwner(rental.TerrainId, rental.PreviousOwnerId, rental.PreviousGroupId);
 
             ImmoProperty property = await ImmoProperty.Query(rental.PropertyId);
             if (property != null && property.Status == PropertyStatus.Loue)
@@ -1197,7 +1208,7 @@ namespace AgentImmo
             panel.AddTabLine("Statistiques globales", _ => StatsMenu(player, null));
             panel.AddTabLine("Agences autorisées (par ID d'entreprise)", _ => AllowedBizMenu(player));
             panel.AddTabLine("Paramètres", _ => SettingsMenu(player));
-            panel.AddTabLine("Diagnostic d'un terrain", _ => TerrainDiagnosticInput(player));
+            panel.AddTabLine("Infos d'un terrain", _ => TerrainInfoInput(player));
 
             panel.NextButton("Sélectionner", () => panel.SelectTab());
             panel.PreviousButton();
@@ -1332,41 +1343,61 @@ namespace AgentImmo
             panel.Display();
         }
 
-        public void TerrainDiagnosticInput(Player player)
+        public void TerrainInfoInput(Player player)
         {
-            Panel panel = PanelHelper.Create("Diagnostic d'un terrain", UIPanel.PanelType.Input, player, () => TerrainDiagnosticInput(player));
-            panel.TextLines.Add("Affiche ce que le plugin lit du terrain (propriétaire...). Le détail complet est écrit dans la console du serveur.");
+            Panel panel = PanelHelper.Create("Infos d'un terrain", UIPanel.PanelType.Input, player, () => TerrainInfoInput(player));
+            panel.TextLines.Add("ID du terrain (laisser vide pour le terrain où vous êtes).");
             panel.SetInputPlaceholder(player.setup.areaId != 0 ? player.setup.areaId.ToString() : "ID du terrain");
-            panel.NextButton("Analyser", () =>
+            panel.NextButton("Afficher", () =>
             {
                 string input = string.IsNullOrWhiteSpace(panel.inputText) ? player.setup.areaId.ToString() : panel.inputText.Trim();
-                if (!int.TryParse(input, out int terrainId))
+                if (!int.TryParse(input, out int terrainId) || GameApi.GetArea(terrainId) == null)
                 {
-                    Notify(player, "ID invalide.", NotificationManager.Type.Error);
-                    TerrainDiagnosticInput(player);
+                    Notify(player, "Terrain introuvable.", NotificationManager.Type.Error);
+                    TerrainInfoInput(player);
                     return;
                 }
-                TerrainDiagnostic(player, terrainId);
+                TerrainInfo(player, terrainId);
             });
             panel.PreviousButton();
             panel.CloseButton();
             panel.Display();
         }
 
-        public void TerrainDiagnostic(Player player, int terrainId)
+        public async void TerrainInfo(Player player, int terrainId)
         {
-            string report = GameBridge.DescribeTerrain(terrainId);
-            Logger.LogVerbose(PluginInformations.SourceName, $"Diagnostic terrain {terrainId} :\n{report}");
+            LifeArea area = GameApi.GetArea(terrainId);
+            if (area == null) return;
+            List<ImmoProperty> properties = await ImmoProperty.Query(p => p.TerrainId == terrainId);
+            List<ImmoRental> rentals = await ImmoRental.Query(r => r.TerrainId == terrainId && r.Active == true);
 
-            Panel panel = PanelHelper.Create($"Terrain n°{terrainId}", UIPanel.PanelType.Text, player, () => TerrainDiagnostic(player, terrainId));
-            int? owner = GameBridge.GetTerrainOwner(terrainId);
-            panel.TextLines.Add(owner.HasValue ? $"Propriétaire (ID personnage) : {owner.Value}" : Color("Propriétaire illisible : voir la console.", Colors.Error));
-            panel.TextLines.Add($"Argent lisible : {(GameBridge.GetMoney(player, false).HasValue ? "oui" : "non")} - Banque : {(GameBridge.GetMoney(player, true).HasValue ? "oui" : "non")}");
-            foreach (string line in report.Split('\n').Take(12))
-                panel.TextLines.Add(line);
+            Panel panel = PanelHelper.Create($"Terrain n°{terrainId}", UIPanel.PanelType.Text, player, () => TerrainInfo(player, terrainId));
+            if (!string.IsNullOrEmpty(area.address)) panel.TextLines.Add($"Adresse : {area.address}");
+            panel.TextLines.Add($"Propriétaire : {await OwnerLabel(area)}");
+            panel.TextLines.Add($"Prix du jeu : {Money(area.price)}" + (area.isRentable ? $" - Location jeu : {Money(area.rentPrice)} / {area.rentHours} h" : ""));
+            foreach (ImmoProperty property in properties)
+                panel.TextLines.Add($"Catalogue : « {property.Name} » ({GetBizName(property.BizId)}) {property.StatusLabel()}");
+            foreach (ImmoRental rental in rentals)
+                panel.TextLines.Add($"Loué à {rental.TenantName} jusqu'au {FormatDate(rental.EndAt)}");
             panel.PreviousButton();
             panel.CloseButton();
             panel.Display();
+        }
+
+        private static async Task<string> OwnerLabel(LifeArea area)
+        {
+            Entity owner = area?.permissions?.owner;
+            if (owner == null || owner.characterId == 0 && owner.groupId == 0) return "aucun";
+            if (owner.groupId != 0) return $"entreprise {GetBizName((int)owner.groupId)}";
+            try
+            {
+                string name = await owner.GetOwnerName();
+                return string.IsNullOrEmpty(name) ? $"personnage n°{owner.characterId}" : name;
+            }
+            catch
+            {
+                return $"personnage n°{owner.characterId}";
+            }
         }
 
         // ==================================================================
@@ -1686,8 +1717,9 @@ namespace AgentImmo
         public int TenantId { get; set; }
         public string TenantName { get; set; }
         public string AgentName { get; set; }
-        /// <summary>Propriétaire du terrain avant la location, rétabli à la fin du bail.</summary>
+        /// <summary>Propriétaire du terrain avant la location (personnage ou entreprise), rétabli à la fin du bail.</summary>
         public int PreviousOwnerId { get; set; }
+        public uint PreviousGroupId { get; set; }
         public double RentPerDay { get; set; }
         public double TotalPaid { get; set; }
         public long StartAt { get; set; }
@@ -1767,142 +1799,43 @@ namespace AgentImmo
     }
 
     // ======================================================================
-    //  Accès au jeu par réflexion
+    //  Accès au jeu : terrains et argent
     // ======================================================================
 
     /// <summary>
-    /// Argent des joueurs, compte des entreprises et propriétaires des terrains.
-    /// Ces membres du jeu ne sont pas exposés par ModKit : on y accède par réflexion
-    /// (comme ModKit le fait pour NetworkAreaManager), ce qui évite que le plugin
-    /// casse à la compilation si le jeu renomme un champ. En cas d'échec, l'opération
-    /// est signalée dans l'historique et dans la console, et le diagnostic staff
-    /// (Administration → Agent Immo → Diagnostic d'un terrain) affiche ce qui est lu.
+    /// Terrains (Nova.a / LifeArea) et argent (Player, Bizs), avec la même logique que l'achat
+    /// d'un terrain dans le jeu : permissions.owner.characterId puis LifeArea.Save().
     /// </summary>
-    public static class GameBridge
+    public static class GameApi
     {
-        private const BindingFlags Flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
-
-        private static readonly string[] AreaGetters = { "GetAreaById", "GetArea", "GetLifeAreaById" };
-        private static readonly string[] AreaIdNames = { "areaId", "AreaId", "id", "Id" };
-        private static readonly string[] OwnerIdNames = { "characterId", "CharacterId", "ownerId", "OwnerId" };
-        private static readonly string[] AreaSaveNames = { "Save", "SaveArea", "UpdateArea", "SaveAreaPermissions" };
-
-        // ---------------- Argent ----------------
-
-        public static double? GetMoney(Player player, bool bank)
+        public static LifeArea GetArea(int areaId)
         {
-            object value = Get(player?.character, bank ? "Bank" : "Money");
-            return value == null ? (double?)null : Convert.ToDouble(value);
+            return areaId > 0 ? Nova.a?.GetAreaById((uint)areaId) : null;
         }
 
-        /// <summary>Retire de l'argent au joueur (espèces ou banque). Faux si fonds insuffisants.</summary>
-        public static bool TryDebit(Player player, double amount, bool bank, string reason)
+        /// <summary>Propriétaire actuel : personnage (characterId) ou entreprise (groupId), 0 si aucun.</summary>
+        public static (int characterId, uint groupId) GetOwner(int areaId)
         {
-            if (amount <= 0) return true;
-            double? current = GetMoney(player, bank);
-            if (!current.HasValue)
-            {
-                Logger.LogError(AgentImmoPlugin.Title, $"Impossible de lire l'argent ({(bank ? "Bank" : "Money")}) du joueur.");
-                return false;
-            }
-            if (current.Value < amount) return false;
-
-            if (!bank && TryInvoke(player, "AddMoney", out _, -amount, reason)) return true;
-            if (!Set(player.character, bank ? "Bank" : "Money", current.Value - amount)) return false;
-            TryInvoke(player.character, "Save", out _);
-            return true;
+            Entity owner = GetArea(areaId)?.permissions?.owner;
+            return owner == null ? (0, 0u) : (owner.characterId, owner.groupId);
         }
 
-        public static bool Credit(Player player, double amount, string reason)
-        {
-            if (player == null || amount <= 0) return amount <= 0;
-            if (TryInvoke(player, "AddMoney", out _, amount, reason)) return true;
-            double? current = GetMoney(player, false);
-            if (!current.HasValue || !Set(player.character, "Money", current.Value + amount)) return false;
-            TryInvoke(player.character, "Save", out _);
-            return true;
-        }
-
-        /// <summary>Crédite le compte en banque d'une entreprise.</summary>
-        public static bool CreditBiz(int bizId, double amount)
-        {
-            Bizs biz = AgentImmoPlugin.GetBiz(bizId);
-            object bank = Get(biz, "Bank");
-            if (bank == null || !Set(biz, "Bank", Convert.ToDouble(bank) + amount)) return false;
-            TryInvoke(biz, "Save", out _);
-            return true;
-        }
-
-        // ---------------- Terrains ----------------
-
-        public static object GetAreaManager() => Get(typeof(Nova), "a");
-
-        public static object GetArea(int areaId)
-        {
-            object manager = GetAreaManager();
-            if (manager == null) return null;
-
-            foreach (string getter in AreaGetters)
-            {
-                if (TryInvoke(manager, getter, out object area, areaId) && area != null) return area;
-            }
-
-            // Sinon : recherche dans les listes / dictionnaires du gestionnaire
-            foreach (MemberInfo member in manager.GetType().GetMembers(Flags))
-            {
-                object value = member is FieldInfo f ? Safe(() => f.GetValue(f.IsStatic ? null : manager))
-                    : member is PropertyInfo p && p.GetIndexParameters().Length == 0 ? Safe(() => p.GetValue(manager))
-                    : null;
-                IEnumerable items = value is IDictionary dictionary ? dictionary.Values : value as IEnumerable;
-                if (items == null || value is string) continue;
-
-                foreach (object item in items)
-                {
-                    object id = AreaIdNames.Select(n => Get(item, n)).FirstOrDefault(v => v != null);
-                    if (id != null && IsNumber(id) && Convert.ToInt64(id) == areaId) return item;
-                }
-            }
-            return null;
-        }
-
-        private static object GetOwnerEntity(object area, out object permissions)
-        {
-            permissions = Get(area, "permissions") ?? Get(area, "Permissions");
-            return Get(permissions, "owner") ?? Get(permissions, "Owner");
-        }
-
-        public static int? GetTerrainOwner(int areaId)
-        {
-            object owner = GetOwnerEntity(GetArea(areaId), out _);
-            object id = OwnerIdNames.Select(n => Get(owner, n)).FirstOrDefault(v => v != null);
-            return id != null && IsNumber(id) ? Convert.ToInt32(id) : (int?)null;
-        }
-
-        /// <summary>Change le propriétaire d'un terrain (0 = aucun). Faux si le terrain n'a pas pu être modifié.</summary>
-        public static bool SetTerrainOwner(int areaId, int characterId)
+        /// <summary>Change le propriétaire du terrain et l'enregistre. Faux si le terrain n'existe pas.</summary>
+        public static bool SetOwner(int areaId, int characterId, uint groupId = 0)
         {
             try
             {
-                object area = GetArea(areaId);
-                object owner = GetOwnerEntity(area, out object permissions);
-                string idName = OwnerIdNames.FirstOrDefault(n => Get(owner, n) != null);
-                if (area == null || owner == null || idName == null || !Set(owner, idName, characterId))
+                LifeArea area = GetArea(areaId);
+                if (area == null)
                 {
-                    Logger.LogError(AgentImmoPlugin.Title, $"Terrain {areaId} : propriétaire introuvable, attribution manuelle nécessaire.");
+                    Logger.LogError(AgentImmoPlugin.Title, $"Terrain {areaId} introuvable : attribution manuelle nécessaire.");
                     return false;
                 }
-                if (Get(owner, "groupId") != null) Set(owner, "groupId", 0);
-
-                // Recopie au cas où ce sont des structures (copiées par valeur)
-                Set(permissions, "owner", owner);
-                Set(area, "permissions", permissions);
-
-                object manager = GetAreaManager();
-                bool saved = AreaSaveNames.Any(n => TryInvoke(area, n, out _))
-                             || AreaSaveNames.Any(n => TryInvoke(manager, n, out _, area))
-                             || AreaSaveNames.Any(n => TryInvoke(manager, n, out _, areaId));
-                if (!saved)
-                    Logger.LogWarning(AgentImmoPlugin.Title, $"Terrain {areaId} : propriétaire modifié, aucune méthode de sauvegarde trouvée.");
+                if (area.permissions == null) area.permissions = new Permissions();
+                if (area.permissions.owner == null) area.permissions.owner = new Entity();
+                area.permissions.owner.characterId = characterId;
+                area.permissions.owner.groupId = groupId;
+                area.Save();
                 return true;
             }
             catch (Exception e)
@@ -1912,130 +1845,40 @@ namespace AgentImmo
             }
         }
 
-        public static string DescribeTerrain(int areaId)
+        public static Vector3? GetPosition(int areaId)
         {
-            object manager = GetAreaManager();
-            if (manager == null) return "Nova.a introuvable.";
-            object area = GetArea(areaId);
-            if (area == null) return $"Gestionnaire {manager.GetType().FullName} trouvé, mais aucun terrain n°{areaId}.";
-
-            StringBuilder builder = new StringBuilder();
-            Describe(area, builder, "", 0);
-            return builder.ToString();
+            if (GetArea(areaId) == null) return null;
+            Vector3 position = Nova.a.GetAreaPosition((uint)areaId);
+            return position == Vector3.zero ? (Vector3?)null : position;
         }
 
-        private static void Describe(object obj, StringBuilder builder, string indent, int depth)
-        {
-            if (obj == null) return;
-            builder.Append(indent).Append('[').Append(obj.GetType().FullName).Append("]\n");
-            foreach (MemberInfo member in obj.GetType().GetMembers(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
-            {
-                object value;
-                if (member is FieldInfo f && !f.Name.Contains("<")) value = Safe(() => f.GetValue(obj));
-                else if (member is PropertyInfo p && p.GetIndexParameters().Length == 0) value = Safe(() => p.GetValue(obj));
-                else continue;
+        public static double GetMoney(Player player, bool bank) => bank ? player.Bank : player.Money;
 
-                if (value == null || value is string || value.GetType().IsPrimitive || value is Enum)
-                    builder.Append(indent).Append("  ").Append(member.Name).Append(" = ").Append(value ?? "null").Append('\n');
-                else if (depth < 2 && member.Name.IndexOf("perm", StringComparison.OrdinalIgnoreCase) >= 0
-                         || depth == 1 && member.Name.IndexOf("owner", StringComparison.OrdinalIgnoreCase) >= 0)
-                {
-                    builder.Append(indent).Append("  ").Append(member.Name).Append(":\n");
-                    Describe(value, builder, indent + "    ", depth + 1);
-                }
-            }
+        /// <summary>Retire de l'argent au joueur (espèces ou banque). Faux si fonds insuffisants.</summary>
+        public static bool TryDebit(Player player, double amount, bool bank, string reason)
+        {
+            if (amount <= 0) return true;
+            if (GetMoney(player, bank) < amount) return false;
+            if (bank) player.AddBankMoney(-amount, reason);
+            else player.AddMoney(-amount, reason);
+            return true;
         }
 
-        // ---------------- Réflexion ----------------
-
-        private static object Get(object target, string name)
+        /// <summary>Verse de l'argent au joueur : en espèces, ou en banque si son portefeuille est plein.</summary>
+        public static void Credit(Player player, double amount, string reason)
         {
-            if (target == null) return null;
-            Type type = target as Type ?? target.GetType();
-            object instance = target is Type ? null : target;
-            for (Type t = type; t != null; t = t.BaseType)
-            {
-                FieldInfo field = t.GetField(name, Flags | BindingFlags.DeclaredOnly);
-                if (field != null) return Safe(() => field.GetValue(field.IsStatic ? null : instance));
-                PropertyInfo property = Safe(() => t.GetProperty(name, Flags | BindingFlags.DeclaredOnly));
-                if (property != null && property.CanRead && property.GetIndexParameters().Length == 0)
-                    return Safe(() => property.GetValue(instance));
-            }
-            return null;
+            if (amount <= 0) return;
+            if (player.CanAddMoney(amount)) player.AddMoney(amount, reason);
+            else player.AddBankMoney(amount, reason);
         }
 
-        private static bool Set(object target, string name, object value)
+        /// <summary>Crédite le compte en banque d'une entreprise.</summary>
+        public static bool CreditBiz(int bizId, double amount, string reason)
         {
-            if (target == null) return false;
-            for (Type t = target.GetType(); t != null; t = t.BaseType)
-            {
-                try
-                {
-                    FieldInfo field = t.GetField(name, Flags | BindingFlags.DeclaredOnly);
-                    if (field != null && !field.IsInitOnly)
-                    {
-                        field.SetValue(target, ConvertTo(value, field.FieldType));
-                        return true;
-                    }
-                    PropertyInfo property = t.GetProperty(name, Flags | BindingFlags.DeclaredOnly);
-                    if (property != null && property.CanWrite)
-                    {
-                        property.SetValue(target, ConvertTo(value, property.PropertyType));
-                        return true;
-                    }
-                }
-                catch (Exception e)
-                {
-                    Logger.LogVerbose(AgentImmoPlugin.Title, $"Set {name} : {e.Message}");
-                    return false;
-                }
-            }
-            return false;
-        }
-
-        private static bool TryInvoke(object target, string name, out object result, params object[] args)
-        {
-            result = null;
-            if (target == null) return false;
-            foreach (MethodInfo method in target.GetType().GetMethods(Flags).Where(m => m.Name == name && m.GetParameters().Length == args.Length))
-            {
-                try
-                {
-                    ParameterInfo[] parameters = method.GetParameters();
-                    object[] converted = new object[args.Length];
-                    for (int i = 0; i < args.Length; i++)
-                    {
-                        if (args[i] != null && !parameters[i].ParameterType.IsInstanceOfType(args[i]) && !(args[i] is IConvertible))
-                            throw new InvalidCastException();
-                        converted[i] = ConvertTo(args[i], parameters[i].ParameterType);
-                    }
-                    result = method.Invoke(method.IsStatic ? null : target, converted);
-                    return true;
-                }
-                catch (InvalidCastException) { }
-                catch (FormatException) { }
-                catch (Exception e)
-                {
-                    Logger.LogVerbose(AgentImmoPlugin.Title, $"{target.GetType().Name}.{name} : {(e.InnerException ?? e).Message}");
-                    return false;
-                }
-            }
-            return false;
-        }
-
-        private static object ConvertTo(object value, Type type)
-        {
-            if (value == null || type.IsInstanceOfType(value)) return value;
-            if (type.IsEnum) return Enum.ToObject(type, value);
-            return Convert.ChangeType(value, Nullable.GetUnderlyingType(type) ?? type, CultureInfo.InvariantCulture);
-        }
-
-        private static bool IsNumber(object value) => value is int || value is uint || value is long || value is short || value is ushort || value is byte;
-
-        private static T Safe<T>(Func<T> func)
-        {
-            try { return func(); }
-            catch { return default; }
+            Bizs biz = AgentImmoPlugin.GetBiz(bizId);
+            if (biz == null) return false;
+            biz.AddBankMoney(amount, reason);
+            return true;
         }
     }
 }
