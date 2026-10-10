@@ -2,9 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Threading.Tasks;
 using Life;
+using HarmonyLib;
 using Life.DB;
 using Life.InventorySystem;
 using Life.Network;
@@ -39,7 +41,7 @@ namespace BankByLorisStrange
 
         public BankPlugin(IGameAPI api) : base(api)
         {
-            PluginInformations = new PluginInformations(AssemblyHelper.GetName(), "1.0.0", "Loris Strange");
+            PluginInformations = new PluginInformations(AssemblyHelper.GetName(), "1.1.0", "Loris Strange");
             Instance = this;
         }
 
@@ -71,7 +73,10 @@ namespace BankByLorisStrange
                 Logger.LogWarning(PluginInformations.SourceName, "AAMenu introuvable : utilisez /bank (staff) et /macarte (joueurs).");
             }
 
-            // Frais sur les DAB d'origine du jeu
+            // Les vrais DAB de la map ouvrent le DAB du plugin
+            PatchGameAtm();
+
+            // Frais sur les DAB d'origine du jeu (si on garde le menu du jeu)
             Nova.server.OnPlayerBankEvent += GameAtmHook.OnPlayerBank;
             Nova.server.OnPlayerMoneyEvent += GameAtmHook.OnPlayerMoney;
 
@@ -103,6 +108,24 @@ namespace BankByLorisStrange
                     }
                     BankAdmin.MainMenu(this, player);
                 })).Register();
+        }
+
+        private void PatchGameAtm()
+        {
+            try
+            {
+                MethodInfo original = AccessTools.Method(typeof(LifeServer), nameof(LifeServer.ShowATM), new[] { typeof(Player), typeof(CardData) });
+                if (original == null)
+                {
+                    Logger.LogError(PluginInformations.SourceName, "LifeServer.ShowATM introuvable : les DAB du jeu gardent leur menu d'origine.");
+                    return;
+                }
+                new Harmony("fr.lorisstrange.bank").Patch(original, prefix: new HarmonyMethod(typeof(GameAtmPatch), nameof(GameAtmPatch.Prefix)));
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(PluginInformations.SourceName, $"Impossible de remplacer le menu des DAB du jeu : {ex}");
+            }
         }
 
         // ------------------------------------------------------------------
@@ -155,7 +178,12 @@ namespace BankByLorisStrange
         /// <summary>Montant maximum retiré par jour et par joueur sur les DAB du plugin (0 = illimité).</summary>
         public double DailyWithdrawLimit = 5000.0;
 
-        /// <summary>Appliquer les frais de retrait sur les DAB d'origine du jeu.</summary>
+        /// <summary>Les vrais DAB de la map ouvrent le DAB du plugin (code, carte, frais...).</summary>
+        public bool UseGameAtm = true;
+        /// <summary>Nom affiché sur le menu quand on utilise un vrai DAB de la map.</summary>
+        public string GameAtmName = "DAB";
+
+        /// <summary>Si UseGameAtm = false : appliquer quand même les frais au menu d'origine des DAB du jeu.</summary>
         public bool ApplyFeesOnGameAtm = true;
 
         /// <summary>Item « carte bancaire » exigé aux DAB du plugin (0 = aucune carte exigée).</summary>
@@ -537,6 +565,30 @@ namespace BankByLorisStrange
     /// AddBankMoney(-X, raison) sur le titulaire puis AddMoney(+X, raison) sur l'utilisateur
     /// du DAB, avec la même raison, dans la même frame.
     /// </summary>
+    /// <summary>
+    /// Patch Harmony de LifeServer.ShowATM : appelé par le jeu quand un joueur utilise un DAB de la map.
+    /// On ouvre le DAB du plugin à la place du menu d'origine.
+    /// </summary>
+    public static class GameAtmPatch
+    {
+        public static bool Prefix(Player __0)
+        {
+            try
+            {
+                BankPlugin plugin = BankPlugin.Instance;
+                if (plugin == null || __0 == null || !plugin.Config.UseGameAtm) return true;
+                string name = string.IsNullOrWhiteSpace(plugin.Config.GameAtmName) ? "DAB" : plugin.Config.GameAtmName;
+                BankMenus.OpenAtm(plugin, __0, name);
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(BankPlugin.Title, $"DAB du jeu : {ex}");
+                return true;
+            }
+        }
+    }
+
     public static class GameAtmHook
     {
         private static Player _lastBankPlayer;
@@ -949,7 +1001,8 @@ namespace BankByLorisStrange
                 (Number("Frais de dépôt (%)", () => Config.DepositFeePercent, v => Config.DepositFeePercent = v), null),
                 (Number("Frais de dépôt fixes (€)", () => Config.DepositFeeFixed, v => Config.DepositFeeFixed = v), null),
                 (Number("Plafond de retrait / jour (€, 0 = aucun)", () => Config.DailyWithdrawLimit, v => Config.DailyWithdrawLimit = v), null),
-                (Toggle("Frais sur les DAB du jeu", () => Config.ApplyFeesOnGameAtm, null), () => Config.ApplyFeesOnGameAtm = !Config.ApplyFeesOnGameAtm),
+                (Toggle("Les vrais DAB de la map ouvrent ce plugin", () => Config.UseGameAtm, null), () => Config.UseGameAtm = !Config.UseGameAtm),
+                (Toggle("Frais au menu d'origine des DAB (si ci-dessus = Non)", () => Config.ApplyFeesOnGameAtm, null), () => Config.ApplyFeesOnGameAtm = !Config.ApplyFeesOnGameAtm),
                 (Number("Prix d'une nouvelle carte (€)", () => Config.NewCardPrice, v => Config.NewCardPrice = v), null),
                 (Toggle("Carte offerte à la création du compte", () => Config.GiveCardOnAccountCreation, null), () => Config.GiveCardOnAccountCreation = !Config.GiveCardOnAccountCreation),
                 (Integer("Essais de code avant blocage", () => Config.MaxPinAttempts, v => Config.MaxPinAttempts = Math.Max(1, v)), null),

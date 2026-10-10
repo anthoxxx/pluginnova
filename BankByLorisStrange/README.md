@@ -4,9 +4,9 @@ Plugin bancaire pour **Nova-Life: Amboise** (ModKit + AAMenu).
 
 ## Fonctionnalités
 
+- **Les vrais DAB de la map** ouvrent le DAB du plugin (carte, code, frais) à la place du menu du jeu.
 - **Frais bancaires sur les retraits**, configurables (pourcentage + fixe, minimum, maximum).
-  - Sur les **DAB du plugin**, placés par le staff.
-  - Sur les **DAB d'origine du jeu** : les frais sont prélevés juste après le retrait (désactivable).
+- Points bleus « DAB » en plus (optionnels), placés par le staff où il veut.
 - **Frais de dépôt** (optionnels) et **plafond de retrait par jour**.
 - **Code de carte bleue pour chaque joueur** : il est généré automatiquement à sa première
   connexion et le joueur le reçoit en notification et dans le chat.
@@ -42,12 +42,12 @@ Ou compiler soi-même :
 | Placer un DAB à ma position | Raccourci vers la création des points DAB |
 | Recharger config.json | Après une modification manuelle du fichier |
 
-Pour placer des DAB : **AAMenu > Administration > Points bleus > DAB (Bank)** →
+Les DAB de la map fonctionnent tout seuls. Pour ajouter des DAB en point bleu (optionnel) : **AAMenu > Administration > Points bleus > DAB (Bank)** →
 « Nouveau modèle » (ex. *DAB Banque Centrale*), puis choisir le modèle et « Placer ici ».
 
 ## Joueurs
 
-- Se placer sur un point DAB → insérer la carte → taper son code →
+- Utiliser un DAB de la map (ou un point bleu DAB) → insérer la carte → taper son code →
   solde, retrait (montants rapides ou libre, frais affichés), dépôt, opérations, changer le code,
   commander une carte.
 - `/macarte` (ou `/carte`, ou AAMenu > Interaction > Ma carte bancaire) : voir son numéro de carte
@@ -64,7 +64,9 @@ Pour placer des DAB : **AAMenu > Administration > Points bleus > DAB (Bank)** �
   "DepositFeePercent": 0.0,
   "DepositFeeFixed": 0.0,
   "DailyWithdrawLimit": 5000.0,    // DAB du plugin, 0 = illimité
-  "ApplyFeesOnGameAtm": true,      // frais aussi sur les DAB du jeu
+  "UseGameAtm": true,              // les DAB de la map ouvrent le menu du plugin
+  "GameAtmName": "DAB",            // titre du menu sur les DAB de la map
+  "ApplyFeesOnGameAtm": true,      // si UseGameAtm = false : frais sur le menu d'origine du jeu
   "CardItemId": 0,                 // item carte bancaire (réglable dans l'AAMenu)
   "GiveCardOnAccountCreation": true,
   "NewCardPrice": 50.0,
@@ -81,9 +83,10 @@ Pour placer des DAB : **AAMenu > Administration > Points bleus > DAB (Bank)** �
 ## Remarques
 
 - Exemple de frais avec la config par défaut : retrait de 100 € → 1 € + 2 % = **3 €** de frais.
-- DAB du jeu : le retrait se fait d'abord, les frais sont pris ensuite sur le compte du titulaire de
-  la carte (ou en liquide si le compte est vide). Si le titulaire de la carte est déconnecté, le jeu
-  ne prévient pas les plugins et aucun frais n'est appliqué. Le plafond journalier et le code du
-  plugin ne s'appliquent qu'aux DAB du plugin (les DAB du jeu gardent leur propre code de carte).
+- DAB de la map : le plugin remplace le menu du jeu grâce à Harmony (`0Harmony.dll`, déjà fourni
+  avec le serveur Nova-Life) en interceptant `LifeServer.ShowATM`. Si le patch échoue, une erreur
+  s'affiche dans la console et les DAB gardent leur menu d'origine.
+- Avec `UseGameAtm = false`, le menu d'origine revient : les frais sont alors prélevés juste après le
+  retrait (si `ApplyFeesOnGameAtm`), mais sans le code, la carte ni le plafond du plugin.
 - Les comptes, codes et l'historique sont dans la base SQLite de ModKit
   (tables `BankAccount`, `BankTransaction`, `AtmPattern`).
