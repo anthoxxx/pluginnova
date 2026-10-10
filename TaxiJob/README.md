@@ -1,9 +1,17 @@
 # TaxiJob
 
+**By Matheo Mercier**
+
 Job taxi complet pour Nova-Life, qui remplace `jobtaxibymatheo.dll`.
 Toutes les courses se font **en voiture** : les points sont orange (points véhicule) et ne
 se déclenchent qu'au volant. L'ancien plugin utilisait des points bleus, qu'il fallait
 prendre à pied.
+
+Le passage sur un point est détecté de deux façons : par le signal du jeu, et par le serveur
+lui-même, qui compare 4 fois par seconde la position de la voiture au point (rayon réglable,
+8 m par défaut). Le jeu n'envoie son signal qu'une fois, à l'entrée de la voiture dans le
+point, et le refuse si le personnage, en retard sur le réseau, est à plus de 10 m. En roulant
+un peu vite, le point ne se validait donc jamais. La détection côté serveur corrige ce cas.
 
 ## Dépendances
 - ModKit (`ModKit.dll`) et AAMenu (`AAMenu.dll`) doivent être installés sur le serveur.
@@ -43,7 +51,7 @@ prendre à pied.
 
 | Menu | Contenu |
 |---|---|
-| Paramètres du job | ID de l'entreprise (**0 = ouvert à tous**, comme un farm), prise de service obligatoire, être au volant pour lancer une course, prise en charge, prix au km, paie min/max, pourboire (%), vitesse de référence, distance minimum, enchaînement automatique, courses max par heure, appels joueurs, expiration des appels, prime d'appel |
+| Paramètres du job | ID de l'entreprise (**0 = ouvert à tous**, comme un farm), prise de service obligatoire, être au volant pour lancer une course, véhicule de l'entreprise taxi obligatoire, rayon de validation d'un point, prise en charge, prix au km, paie min/max, pourboire (%), vitesse de référence, distance minimum, enchaînement automatique, courses max par heure, appels joueurs, expiration des appels, prime d'appel |
 | Points de course | **Ajouter ici** (à votre position, sur la route), renommer, type (prise en charge et/ou dépose), activer/désactiver, déplacer ici, se téléporter, supprimer |
 | Véhicules autorisés | Liste vide = tous les véhicules. **Ajouter mon véhicule** (monter dedans) / retirer |
 | Centrales taxi | Placer une centrale ici, liste des points (TP, déplacer, supprimer), modèles |

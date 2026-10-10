@@ -36,6 +36,7 @@ namespace TaxiJob
         public static TaxiJobPlugin Instance { get; private set; }
 
         private const string Title = "Taxi";
+        public const string Author = "Matheo Mercier";
 
         /// <summary>Activité d'entreprise sur laquelle AAMenu affiche les lignes taxi (même valeur que l'ancien plugin).</summary>
         private static readonly Activity.Type TaxiActivity = (Activity.Type)6;
@@ -52,7 +53,7 @@ namespace TaxiJob
 
         public TaxiJobPlugin(IGameAPI api) : base(api)
         {
-            PluginInformations = new PluginInformations(AssemblyHelper.GetName(), "2.0.0", "anthoxxx");
+            PluginInformations = new PluginInformations(AssemblyHelper.GetName(), "2.1.0", Author);
         }
 
         public override void OnPluginInit()
@@ -82,9 +83,10 @@ namespace TaxiJob
 
             RegisterCommands();
             Nova.server.OnMinutePassedEvent += OnMinutePassed;
+            TaxiTicker.Start(this);
             _ = LoadDataAsync();
 
-            Logger.LogSuccess($"{PluginInformations.SourceName} v{PluginInformations.Version}", "initialisé");
+            Logger.LogSuccess($"{PluginInformations.SourceName} v{PluginInformations.Version} by {Author}", "initialisé");
         }
 
         public override void OnPlayerSpawnCharacter(Player player, NetworkConnection conn, Characters character)
@@ -241,32 +243,50 @@ namespace TaxiJob
             return true;
         }
 
-        /// <summary>Modèle du véhicule conduit par le joueur, ou -1 s'il n'est pas au volant.</summary>
+        /// <summary>
+        /// Véhicule dont le joueur est le conducteur (siège 0), ou null.
+        /// Même source que le serveur du jeu : CharacterDriver.currentVehicle.
+        /// </summary>
+        private static Life.VehicleSystem.Vehicle DrivenVehicle(Player p)
+        {
+            if (p?.setup == null) return null;
+            uint vehicleId = p.GetVehicleId();
+            if (vehicleId == 0 || !NetworkServer.spawned.TryGetValue(vehicleId, out NetworkIdentity identity) || identity == null) return null;
+
+            Life.VehicleSystem.Vehicle vehicle = identity.GetComponent<Life.VehicleSystem.Vehicle>();
+            if (vehicle == null || vehicle.netSeats == null || vehicle.netSeats.Count == 0) return null;
+            return vehicle.netSeats[0].passengerId == p.setup.netId ? vehicle : null;
+        }
+
+        /// <summary>Modèle du véhicule conduit par le joueur, -1 s'il n'est pas au volant, -2 si modèle inconnu.</summary>
         private static int DrivenModelId(Player p)
         {
-            Life.VehicleSystem.Vehicle vehicle = p.GetVehicle()?.vehicle;
+            Life.VehicleSystem.Vehicle vehicle = DrivenVehicle(p);
             if (vehicle == null) return -1;
-            return Nova.v.GetVehicle(vehicle.VehicleDbId)?.modelId ?? -1;
+            return Nova.v.GetVehicle(vehicle.VehicleDbId)?.modelId ?? -2;
+        }
+
+        /// <summary>Raison pour laquelle le véhicule du joueur ne convient pas, ou null s'il convient.</summary>
+        private string VehicleProblem(Player p)
+        {
+            List<int> allowed = _settings.AllowedModelIds;
+            bool needBizVehicle = _settings.RequireBizVehicle && _settings.BizId > 0;
+            if (!_settings.RequireVehicle && allowed.Count == 0 && !needBizVehicle) return null;
+
+            Life.VehicleSystem.Vehicle vehicle = DrivenVehicle(p);
+            if (vehicle == null) return "Vous devez être au volant d'un véhicule.";
+            if (needBizVehicle && vehicle.bizId != _settings.BizId) return "Ce véhicule n'appartient pas à la compagnie de taxi.";
+            if (allowed.Count > 0 && !allowed.Contains(DrivenModelId(p))) return "Ce véhicule n'est pas un taxi autorisé.";
+            return null;
         }
 
         /// <summary>Vérifie que le joueur conduit un véhicule autorisé (si la config l'exige).</summary>
         private bool CheckVehicle(Player p)
         {
-            List<int> allowed = _settings.AllowedModelIds;
-            if (!_settings.RequireVehicle && allowed.Count == 0) return true;
-
-            int modelId = DrivenModelId(p);
-            if (modelId < 0)
-            {
-                Notify(p, "Vous devez être au volant d'un véhicule.", NotificationManager.Type.Warning);
-                return false;
-            }
-            if (allowed.Count > 0 && !allowed.Contains(modelId))
-            {
-                Notify(p, "Ce véhicule n'est pas un taxi autorisé.", NotificationManager.Type.Warning);
-                return false;
-            }
-            return true;
+            string problem = VehicleProblem(p);
+            if (problem == null) return true;
+            Notify(p, problem, NotificationManager.Type.Warning);
+            return false;
         }
 
         public void OpenDriverMenu(Player player)
@@ -282,6 +302,7 @@ namespace TaxiJob
             int pending = PendingCalls().Count;
 
             Panel panel = PanelHelper.Create("Taxi - Menu chauffeur", UIPanel.PanelType.Tab, player, () => OpenDriverMenu(player));
+            panel.TextLines.Add(Col($"By {Author}", Gold));
 
             if (_settings.RequireService)
             {
@@ -590,23 +611,64 @@ namespace TaxiJob
             ClearRideCheckpoint(p, ride);
 
             NVehicleCheckpoint checkpoint = null;
-            checkpoint = new NVehicleCheckpoint(p.netId, position, (Action<NVehicleCheckpoint, uint>)((triggered, vehicleId) =>
-            {
-                // Ignore les déclenchements d'un ancien point ou d'une course annulée
-                if (!_rides.TryGetValue(p.netId, out Ride current) || current != ride || ride.Checkpoint != checkpoint) return;
-                // Le point reste en place tant que le chauffeur n'est pas dans un taxi autorisé
-                if (_settings.AllowedModelIds.Count > 0 && !CheckVehicle(p)) return;
-                ClearRideCheckpoint(p, ride);
-                onReached(p, ride);
-            }));
+            checkpoint = new NVehicleCheckpoint(p.netId, position,
+                (Action<NVehicleCheckpoint, uint>)((triggered, vehicleId) => TryReach(p, ride, checkpoint, true)));
 
             ride.Checkpoint = checkpoint;
+            ride.Target = position;
+            ride.OnReached = onReached;
+            ride.LastWarning = DateTime.MinValue;
             p.CreateVehicleCheckpoint(checkpoint);
+        }
+
+        /// <summary>Le chauffeur atteint le point de sa course (signal du jeu ou détection serveur).</summary>
+        private void TryReach(Player p, Ride ride, NVehicleCheckpoint checkpoint, bool fromGame)
+        {
+            // Ignore les déclenchements d'un ancien point ou d'une course annulée
+            if (p == null || !_rides.TryGetValue(p.netId, out Ride current) || current != ride || ride.Checkpoint != checkpoint) return;
+
+            // Le point reste en place tant que le chauffeur n'est pas dans un taxi autorisé
+            string problem = VehicleProblem(p);
+            if (problem != null)
+            {
+                if ((DateTime.Now - ride.LastWarning).TotalSeconds >= 5)
+                {
+                    ride.LastWarning = DateTime.Now;
+                    Notify(p, problem, NotificationManager.Type.Warning);
+                }
+                return;
+            }
+
+            ClearRideCheckpoint(p, ride);
+            ride.OnReached(p, ride);
+        }
+
+        /// <summary>
+        /// Détection côté serveur, appelée plusieurs fois par seconde. Le jeu n'envoie qu'un seul signal
+        /// quand la voiture entre dans le point orange et le refuse si la position du personnage, en retard
+        /// sur le réseau, est à plus de 10 m : en roulant vite le point ne se validait jamais.
+        /// Ici on compare directement la position de la voiture au point, sans dépendre de ce signal.
+        /// </summary>
+        internal void Tick()
+        {
+            if (_rides.Count == 0) return;
+            float radius = Math.Max(2, _settings.TriggerRadius);
+
+            foreach (Ride ride in _rides.Values.ToList())
+            {
+                if (ride.Checkpoint == null) continue;
+                Player p = GetPlayer(ride.DriverId);
+                Life.VehicleSystem.Vehicle vehicle = DrivenVehicle(p);
+                if (vehicle == null) continue;
+                if (Vector3.Distance(vehicle.transform.position, ride.Target) <= radius)
+                    TryReach(p, ride, ride.Checkpoint, false);
+            }
         }
 
         private static void ClearRideCheckpoint(Player p, Ride ride)
         {
             if (ride?.Checkpoint == null) return;
+            Nova.server.vehicleCheckpoints?.Remove(ride.Checkpoint);
             p?.DestroyVehicleCheckpoint(ride.Checkpoint);
             ride.Checkpoint = null;
         }
@@ -761,6 +823,7 @@ namespace TaxiJob
             if (!IsStaff(player)) return;
 
             Panel panel = PanelHelper.Create("Taxi - Configuration (staff)", UIPanel.PanelType.Tab, player, () => OpenAdminMenu(player));
+            panel.TextLines.Add(Col($"TaxiJob v{PluginInformations.Version} - By {Author}", Gold));
             panel.AddTabLine("Paramètres du job (paie, entreprise, règles...)", _ => SettingsMenu(player));
             panel.AddTabLine($"Points de course ({_points.Count(p => p.Enabled)} actifs / {_points.Count})", _ => PointsMenu(player));
             panel.AddTabLine($"Véhicules autorisés ({(_settings.AllowedModelIds.Count == 0 ? "tous" : _settings.AllowedModelIds.Count.ToString())})", _ => VehiclesMenu(player));
@@ -783,6 +846,8 @@ namespace TaxiJob
             SettingField.Int("ID de l'entreprise taxi (0 = ouvert à tous, comme un farm)", s => s.BizId, (s, v) => s.BizId = v, 0, 100000),
             SettingField.Bool("Prise de service obligatoire", s => s.RequireService, (s, v) => s.RequireService = v),
             SettingField.Bool("Être au volant pour lancer une course", s => s.RequireVehicle, (s, v) => s.RequireVehicle = v),
+            SettingField.Bool("Véhicule de l'entreprise taxi obligatoire", s => s.RequireBizVehicle, (s, v) => s.RequireBizVehicle = v),
+            SettingField.Int("Rayon de validation d'un point (m)", s => s.TriggerRadius, (s, v) => s.TriggerRadius = v, 2, 50),
             SettingField.Int("Prise en charge (€)", s => s.BasePay, (s, v) => s.BasePay = v, 0, 1000000),
             SettingField.Int("Prix au kilomètre (€)", s => s.PayPerKm, (s, v) => s.PayPerKm = v, 0, 1000000),
             SettingField.Int("Paie minimum par course (€, 0 = aucun)", s => s.MinPay, (s, v) => s.MinPay = v, 0, 1000000),
@@ -997,9 +1062,14 @@ namespace TaxiJob
             panel.AddButton("Ajouter mon véhicule", async _ =>
             {
                 int modelId = DrivenModelId(player);
-                if (modelId < 0)
+                if (modelId == -1)
                 {
                     Notify(player, "Montez au volant du véhicule à autoriser.", NotificationManager.Type.Warning);
+                    return;
+                }
+                if (modelId < 0)
+                {
+                    Notify(player, "Modèle inconnu (véhicule non enregistré). Utilisez plutôt « Véhicule de l'entreprise taxi obligatoire ».", NotificationManager.Type.Warning);
                     return;
                 }
                 if (!_settings.AllowedModelIds.Contains(modelId))
@@ -1253,7 +1323,12 @@ namespace TaxiJob
 
         private static Player GetPlayer(uint netId) => Nova.server.Players.FirstOrDefault(p => p.netId == netId);
 
-        private static Vector3 Position(Player player) => player.setup.transform.position;
+        /// <summary>Position du joueur, ou de sa voiture s'il conduit (plus fiable que le personnage en roulant).</summary>
+        private static Vector3 Position(Player player)
+        {
+            Life.VehicleSystem.Vehicle vehicle = DrivenVehicle(player);
+            return vehicle != null ? vehicle.transform.position : player.setup.transform.position;
+        }
 
         private T Pick<T>(List<T> list) => list[_rng.Next(list.Count)];
     }
@@ -1287,6 +1362,8 @@ namespace TaxiJob
         public int CallExpireMinutes { get; set; } = 10;
         public int CallBonus { get; set; } = 0;
         public bool RequireVehicle { get; set; } = true;
+        public bool RequireBizVehicle { get; set; } = false;
+        public int TriggerRadius { get; set; } = 8;
 
         /// <summary>Modèles de véhicule autorisés, séparés par des virgules (vide = tous).</summary>
         public string AllowedModels { get; set; } = "";
@@ -1385,6 +1462,29 @@ namespace TaxiJob
     //  État en mémoire
     // ======================================================================
 
+    /// <summary>Composant Unity qui appelle TaxiJobPlugin.Tick 4 fois par seconde (sur le thread principal).</summary>
+    internal sealed class TaxiTicker : MonoBehaviour
+    {
+        private const float Interval = 0.25f;
+        private TaxiJobPlugin _plugin;
+        private float _next;
+
+        public static void Start(TaxiJobPlugin plugin)
+        {
+            GameObject go = new GameObject("TaxiJobTicker");
+            DontDestroyOnLoad(go);
+            go.AddComponent<TaxiTicker>()._plugin = plugin;
+        }
+
+        private void Update()
+        {
+            if (Time.time < _next) return;
+            _next = Time.time + Interval;
+            try { _plugin?.Tick(); }
+            catch (Exception e) { Debug.LogError($"[TaxiJob] {e}"); }
+        }
+    }
+
     internal enum RideStage { ToPickup, ToDropoff }
 
     internal sealed class Ride
@@ -1395,6 +1495,9 @@ namespace TaxiJob
         public TaxiPoint Dropoff;
         public TaxiCall Call;
         public NVehicleCheckpoint Checkpoint;
+        public Vector3 Target;
+        public Action<Player, Ride> OnReached;
+        public DateTime LastWarning;
         public DateTime StageStart;
         public float Distance;
         public int Fare;
