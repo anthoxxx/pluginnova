@@ -231,7 +231,7 @@ namespace PermisArmePlugin
 
         public PermisArme(IGameAPI api) : base(api)
         {
-            PluginInformations = new PluginInformations(AssemblyHelper.GetName(), "1.1.0", "Alfred");
+            PluginInformations = new PluginInformations(AssemblyHelper.GetName(), "1.1.0", "Matheo Mercier");
             Instance = this;
         }
 
@@ -264,7 +264,7 @@ namespace PermisArmePlugin
             AAMenu.Menu.AddBizTabLine(PluginInformations, new List<Activity.Type> { Activity.Type.LawEnforcement }, null,
                 "Registre permis d'arme", ui => OuvrirPolice(getPlayer(ui)));
 
-            Logger.LogSuccess(PluginInformations.SourceName, "Permis d'arme chargé");
+            Logger.LogSuccess(PluginInformations.SourceName, "Permis d'arme chargé - By Matheo Mercier");
         }
 
         public override void OnPlayerSpawnCharacter(Player player, NetworkConnection conn, Characters character)

@@ -6,7 +6,7 @@
     <AssemblyName>PermisArme</AssemblyName>
     <RootNamespace>PermisArme</RootNamespace>
     <Version>1.1.0</Version>
-    <Authors>anthoxxx</Authors>
+    <Authors>Matheo Mercier</Authors>
     <!-- Dossier contenant TOUTES les DLL nécessaires (voir libs/README.md) -->
     <LibsPath Condition="'$(LibsPath)' == ''">$(MSBuildThisFileDirectory)libs</LibsPath>
   </PropertyGroup>
