@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using Life;
+using Life.BizSystem;
 using Life.DB;
 using Life.Network;
 using Life.UI;
@@ -206,44 +207,6 @@ namespace PermisArmePlugin
             return res;
         }
 
-        // Ajoute des lignes dans d'autres menus AA (documents joueur / métier police).
-        // Passe par la réflexion : on essaie plusieurs noms de méthodes, et le plugin ne plante pas si aucun n'existe.
-        public static bool TryRegisterLine(PluginInformations infos, string[] methodNames, string label, Action<Player> open, Func<UIPanel, Player> getPlayer)
-        {
-            try
-            {
-                Action<UIPanel> viaPanel = ui => open(getPlayer(ui));
-                var flags = BindingFlags.Public | BindingFlags.Static;
-                foreach (var name in methodNames)
-                {
-                    foreach (var m in typeof(AAMenu.Menu).GetMethods(flags).Where(x => x.Name == name))
-                    {
-                        var args = new List<object>();
-                        bool ok = true, labelDone = false;
-                        foreach (var prm in m.GetParameters())
-                        {
-                            var t = prm.ParameterType;
-                            if (t == typeof(PluginInformations)) args.Add(infos);
-                            else if (t == typeof(int)) args.Add(0);
-                            else if (t == typeof(string) && !labelDone) { args.Add(label); labelDone = true; }
-                            else if (t == typeof(Action<UIPanel>)) args.Add(viaPanel);
-                            else if (t == typeof(Action<Player>)) args.Add(open);
-                            else { ok = false; break; }
-                        }
-                        if (!ok || !labelDone) continue;
-                        m.Invoke(null, args.ToArray());
-                        Logger.LogSuccess("PermisArme", "Menu AA : '" + label + "' ajouté via " + name);
-                        return true;
-                    }
-                }
-                // Aucun nom trouvé : on liste ce qui existe pour pouvoir ajuster
-                var dispo = typeof(AAMenu.Menu).GetMethods(flags).Select(x => x.Name).Distinct().ToList();
-                Logger.LogError("PermisArme", "Aucune méthode AA trouvée pour '" + label + "'. Méthodes dispo : " + string.Join(", ", dispo));
-            }
-            catch (Exception ex) { Logger.LogError("PermisArme", "TryRegisterLine : " + ex.Message); }
-            return false;
-        }
-
         public static void Notify(Player p, string msg, bool success = true)
         {
             p.Notify("Permis d'arme", msg, success ? NotificationManager.Type.Success : NotificationManager.Type.Error);
@@ -295,13 +258,11 @@ namespace PermisArmePlugin
             new SChatCommand("/monpermisarme", "Consulter votre permis de port d'arme", "/monpermisarme", (player, args) => MonPermis(player)).Register();
             new SChatCommand("/permisarmepoint", "Placer les points d'examen (staff)", "/permisarmepoint", (player, args) => OuvrirPoints(player)).Register();
 
-            // Menu AA joueur (consulter son permis) + menu AA police (registre / retrait)
-            NovaBridge.TryRegisterLine(PluginInformations,
-                new[] { "AddDocumentTabLine", "AddInteractionTabLine" },
-                "Mon permis de port d'arme", MonPermis, getPlayer);
-            NovaBridge.TryRegisterLine(PluginInformations,
-                new[] { "AddBizTabLine", "AddInteractionTabLine" },
-                "Registre permis d'arme", OuvrirPolice, getPlayer);
+            // AAMenu > Documents : le joueur consulte son permis
+            AAMenu.Menu.AddDocumentTabLine(PluginInformations, "Mon permis de port d'arme", ui => MonPermis(getPlayer(ui)));
+            // AAMenu > Métier (forces de l'ordre) : registre / retrait des permis
+            AAMenu.Menu.AddBizTabLine(PluginInformations, new List<Activity.Type> { Activity.Type.LawEnforcement }, null,
+                "Registre permis d'arme", ui => OuvrirPolice(getPlayer(ui)));
 
             Logger.LogSuccess(PluginInformations.SourceName, "Permis d'arme chargé");
         }
