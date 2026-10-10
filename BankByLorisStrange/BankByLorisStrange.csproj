@@ -5,7 +5,7 @@
     <LangVersion>11.0</LangVersion>
     <AssemblyName>BankByLorisStrange</AssemblyName>
     <RootNamespace>BankByLorisStrange</RootNamespace>
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
     <Authors>Loris Strange</Authors>
     <!-- Dossier contenant TOUTES les DLL nécessaires (voir libs/README.md) -->
     <LibsPath Condition="'$(LibsPath)' == ''">$(MSBuildThisFileDirectory)libs</LibsPath>

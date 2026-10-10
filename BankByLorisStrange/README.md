@@ -80,6 +80,17 @@ Les DAB de la map fonctionnent tout seuls. Pour ajouter des DAB en point bleu (o
 
 (Les commentaires ci-dessus sont explicatifs : le vrai fichier JSON n'en contient pas.)
 
+### Couleurs et icônes du DAB (`Theme`)
+
+Dans `config.json`, la section `Theme` règle l'apparence du DAB (puis « Recharger config.json » dans le menu staff) :
+
+- couleurs au format `#RRGGBB` : `TitleColor`, `BalanceColor`, `WithdrawColor`, `DepositColor`,
+  `HistoryColor`, `PinColor`, `CardColor`, `FeeColor`, `MutedColor` ;
+- icônes (id d'icône du jeu) : `BalanceIcon` (74 = DAB), `WithdrawIcon` (93 = mallette d'argent),
+  `DepositIcon` (78 = caisse), `HistoryIcon` (166 = imprimante), `PinIcon` (86 = clavier),
+  `CardIcon` (153 = ordinateur portable), `QuickAmountIcon`, `OtherAmountIcon`.
+  Autres idées : 35 = distributeur, 44 = casier, 167 = valise, 39 = diamant, 91 = aucune icône.
+
 ## Remarques
 
 - Exemple de frais avec la config par défaut : retrait de 100 € → 1 € + 2 % = **3 €** de frais.

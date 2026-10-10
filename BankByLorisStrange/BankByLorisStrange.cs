@@ -41,7 +41,7 @@ namespace BankByLorisStrange
 
         public BankPlugin(IGameAPI api) : base(api)
         {
-            PluginInformations = new PluginInformations(AssemblyHelper.GetName(), "1.1.0", "Loris Strange");
+            PluginInformations = new PluginInformations(AssemblyHelper.GetName(), "1.2.0", "Loris Strange");
             Instance = this;
         }
 
@@ -204,6 +204,36 @@ namespace BankByLorisStrange
 
         /// <summary>Niveau admin minimum pour le menu staff dans AAMenu.</summary>
         public int AdminLevel = 1;
+
+        /// <summary>Couleurs et icônes des menus du DAB.</summary>
+        public AtmTheme Theme = new AtmTheme();
+    }
+
+    /// <summary>
+    /// Apparence du DAB. Couleurs au format hexadécimal (#RRGGBB).
+    /// Icônes : id d'icône du jeu (ex. 74 = DAB, 93 = mallette d'argent, 78 = caisse,
+    /// 166 = imprimante, 86 = clavier, 153 = ordinateur portable, 91 = aucune).
+    /// </summary>
+    public class AtmTheme
+    {
+        public string TitleColor = "#FFC94D";
+        public string BalanceColor = "#4ADE80";
+        public string WithdrawColor = "#FB7185";
+        public string DepositColor = "#60A5FA";
+        public string HistoryColor = "#C084FC";
+        public string PinColor = "#FBBF24";
+        public string CardColor = "#22D3EE";
+        public string FeeColor = "#FB923C";
+        public string MutedColor = "#9CA3AF";
+
+        public int BalanceIcon = 74;
+        public int WithdrawIcon = 93;
+        public int DepositIcon = 78;
+        public int HistoryIcon = 166;
+        public int PinIcon = 86;
+        public int CardIcon = 153;
+        public int QuickAmountIcon = 93;
+        public int OtherAmountIcon = 86;
     }
 
     // ======================================================================
@@ -273,7 +303,14 @@ namespace BankByLorisStrange
 
         public static Player OnlinePlayer(int characterId) => Nova.server.Players.FirstOrDefault(p => p?.character != null && p.character.Id == characterId);
 
-        public static string Money(double amount) => $"{amount:0.##}€";
+        public static string Money(double amount) =>
+            amount.ToString("#,0.##", System.Globalization.CultureInfo.InvariantCulture).Replace(",", " ").Replace(".", ",") + " €";
+
+        public static string ShortFees()
+        {
+            if (Config.WithdrawFeePercent <= 0 && Config.WithdrawFeeFixed <= 0) return "Sans frais";
+            return $"Frais {Config.WithdrawFeePercent:0.##}% + {Money(Config.WithdrawFeeFixed)}";
+        }
 
         // --- Comptes ---------------------------------------------------------
 
@@ -637,6 +674,10 @@ namespace BankByLorisStrange
     public static class BankMenus
     {
         private static BankConfig Config => BankPlugin.Instance.Config;
+        private static AtmTheme Theme => Config.Theme ?? (Config.Theme = new AtmTheme());
+
+        private static string C(string text, string hex) => string.IsNullOrWhiteSpace(hex) ? text : Color(text, hex);
+        private static string Title(string text) => C(Bold(text), Theme.TitleColor);
 
         /// <summary>Insertion de la carte dans un DAB.</summary>
         public static async void OpenAtm(ModKit.ModKit context, Player player, string atmName)
@@ -667,8 +708,9 @@ namespace BankByLorisStrange
         private static void AskPin(ModKit.ModKit context, Player player, BankAccount account, string atmName)
         {
             Panel panel = context.PanelHelper.Create($"{atmName} - Code", UIPanel.PanelType.Input, player, () => AskPin(context, player, account, atmName));
-            panel.TextLines.Add($"Carte {account.MaskedCardNumber}");
-            panel.TextLines.Add("Composez votre code à 4 chiffres");
+            panel.TextLines.Add(Title(BankPlugin.Title));
+            panel.TextLines.Add(C($"Carte {account.MaskedCardNumber}", Theme.CardColor));
+            panel.TextLines.Add(C("Composez votre code à 4 chiffres", Theme.PinColor));
             if (account.FailedAttempts > 0)
                 panel.TextLines.Add(Color($"Code erroné : {Config.MaxPinAttempts - account.FailedAttempts} essai(s) restant(s)", Colors.Warning));
             panel.SetInputPlaceholder("••••");
@@ -712,13 +754,13 @@ namespace BankByLorisStrange
         {
             Panel panel = context.PanelHelper.Create(atmName, UIPanel.PanelType.TabPrice, player, () => AtmMenu(context, player, account, atmName));
 
-            panel.AddTabLine("Consulter mon solde", BankService.Money(player.Bank), IconUtils.Others.None.Id, _ => ShowBalance(context, player, account, atmName));
-            panel.AddTabLine("Retirer de l'argent", Color(BankService.FeesDescription(), Colors.Grey), IconUtils.Others.None.Id, _ => QuickWithdraw(context, player, account, atmName));
-            panel.AddTabLine("Déposer de l'argent", BankService.Money(player.Money) + " en poche", IconUtils.Others.None.Id, _ => AskDeposit(context, player, account, atmName));
-            panel.AddTabLine("Dernières opérations", "", IconUtils.Others.None.Id, async _ => await ShowHistory(context, player, account, atmName));
-            panel.AddTabLine("Changer mon code", "", IconUtils.Others.None.Id, _ => ChangePin(context, player, account, atmName));
+            panel.AddTabLine(C("Consulter mon solde", Theme.BalanceColor), C(Bold(BankService.Money(player.Bank)), Theme.BalanceColor), Theme.BalanceIcon, _ => ShowBalance(context, player, account, atmName));
+            panel.AddTabLine(C("Retirer de l'argent", Theme.WithdrawColor), C(BankService.ShortFees(), Theme.FeeColor), Theme.WithdrawIcon, _ => QuickWithdraw(context, player, account, atmName));
+            panel.AddTabLine(C("Déposer de l'argent", Theme.DepositColor), C(BankService.Money(player.Money), Theme.DepositColor) + "<br>" + C("en poche", Theme.MutedColor), Theme.DepositIcon, _ => AskDeposit(context, player, account, atmName));
+            panel.AddTabLine(C("Dernières opérations", Theme.HistoryColor), C("Relevé", Theme.MutedColor), Theme.HistoryIcon, async _ => await ShowHistory(context, player, account, atmName));
+            panel.AddTabLine(C("Changer mon code", Theme.PinColor), C("4 chiffres", Theme.MutedColor), Theme.PinIcon, _ => ChangePin(context, player, account, atmName));
             if (Config.CardItemId > 0)
-                panel.AddTabLine("Commander une nouvelle carte", BankService.Money(Config.NewCardPrice), IconUtils.Others.None.Id, async _ => await OrderCard(player, account, atmName));
+                panel.AddTabLine(C("Commander une nouvelle carte", Theme.CardColor), C(BankService.Money(Config.NewCardPrice), Theme.FeeColor), Theme.CardIcon, async _ => await OrderCard(player, account, atmName));
 
             panel.NextButton("Sélectionner", () => panel.SelectTab());
             panel.CloseButton("Reprendre la carte");
@@ -728,14 +770,15 @@ namespace BankByLorisStrange
         private static void ShowBalance(ModKit.ModKit context, Player player, BankAccount account, string atmName)
         {
             Panel panel = context.PanelHelper.Create($"{atmName} - Solde", UIPanel.PanelType.Text, player, () => ShowBalance(context, player, account, atmName));
-            panel.TextLines.Add($"Titulaire : {player.FullName}");
-            panel.TextLines.Add($"Carte : {account.MaskedCardNumber}");
+            panel.TextLines.Add(Title(BankPlugin.Title));
+            panel.TextLines.Add($"Titulaire : {C(player.FullName, Theme.CardColor)}");
+            panel.TextLines.Add($"Carte : {C(account.MaskedCardNumber, Theme.CardColor)}");
             panel.TextLines.Add("");
-            panel.TextLines.Add(Size(Bold($"Solde : {BankService.Money(player.Bank)}"), 26));
-            panel.TextLines.Add($"Argent liquide : {BankService.Money(player.Money)}");
+            panel.TextLines.Add(Size(Bold($"Solde : {C(BankService.Money(player.Bank), Theme.BalanceColor)}"), 26));
+            panel.TextLines.Add($"Argent liquide : {C(BankService.Money(player.Money), Theme.DepositColor)}");
             if (Config.DailyWithdrawLimit > 0)
-                panel.TextLines.Add($"Retrait possible aujourd'hui : {BankService.Money(BankService.RemainingDailyLimit(account))}");
-            panel.TextLines.Add($"Total des frais payés : {BankService.Money(account.TotalFeesPaid)}");
+                panel.TextLines.Add($"Retrait possible aujourd'hui : {C(BankService.Money(BankService.RemainingDailyLimit(account)), Theme.WithdrawColor)}");
+            panel.TextLines.Add($"Total des frais payés : {C(BankService.Money(account.TotalFeesPaid), Theme.FeeColor)}");
             panel.PreviousButton();
             panel.CloseButton();
             panel.Display();
@@ -746,18 +789,18 @@ namespace BankByLorisStrange
         private static void QuickWithdraw(ModKit.ModKit context, Player player, BankAccount account, string atmName)
         {
             Panel panel = context.PanelHelper.Create($"{atmName} - Retrait", UIPanel.PanelType.TabPrice, player, () => QuickWithdraw(context, player, account, atmName));
-            panel.TextLines.Add(BankService.FeesDescription());
+            panel.TextLines.Add(C(BankService.FeesDescription(), Theme.FeeColor));
 
             foreach (double amount in QuickAmounts)
             {
                 double fee = BankService.WithdrawFee(amount);
-                panel.AddTabLine(BankService.Money(amount), Color($"+{BankService.Money(fee)} de frais", Colors.Grey), IconUtils.Others.None.Id, async _ =>
+                panel.AddTabLine(C(Bold(BankService.Money(amount)), Theme.WithdrawColor), C($"+{BankService.Money(fee)} de frais", Theme.FeeColor), Theme.QuickAmountIcon, async _ =>
                 {
                     if (await BankService.Withdraw(player, account, amount))
                         panel.Refresh();
                 });
             }
-            panel.AddTabLine("Autre montant", "", IconUtils.Others.None.Id, _ => AskWithdraw(context, player, account, atmName));
+            panel.AddTabLine(C("Autre montant", Theme.PinColor), C("Saisir", Theme.MutedColor), Theme.OtherAmountIcon, _ => AskWithdraw(context, player, account, atmName));
 
             panel.AddButton("Retirer", _ => panel.SelectTab());
             panel.PreviousButton();
@@ -768,8 +811,8 @@ namespace BankByLorisStrange
         private static void AskWithdraw(ModKit.ModKit context, Player player, BankAccount account, string atmName)
         {
             Panel panel = context.PanelHelper.Create($"{atmName} - Autre montant", UIPanel.PanelType.Input, player, () => AskWithdraw(context, player, account, atmName));
-            panel.TextLines.Add($"Solde : {BankService.Money(player.Bank)}");
-            panel.TextLines.Add(BankService.FeesDescription());
+            panel.TextLines.Add($"Solde : {C(BankService.Money(player.Bank), Theme.BalanceColor)}");
+            panel.TextLines.Add(C(BankService.FeesDescription(), Theme.FeeColor));
             panel.SetInputPlaceholder("Montant à retirer");
 
             panel.PreviousButtonWithAction("Retirer", async () =>
@@ -782,9 +825,9 @@ namespace BankByLorisStrange
         private static void AskDeposit(ModKit.ModKit context, Player player, BankAccount account, string atmName)
         {
             Panel panel = context.PanelHelper.Create($"{atmName} - Dépôt", UIPanel.PanelType.Input, player, () => AskDeposit(context, player, account, atmName));
-            panel.TextLines.Add($"Argent liquide : {BankService.Money(player.Money)}");
+            panel.TextLines.Add($"Argent liquide : {C(BankService.Money(player.Money), Theme.DepositColor)}");
             if (Config.DepositFeePercent > 0 || Config.DepositFeeFixed > 0)
-                panel.TextLines.Add($"Frais de dépôt : {Config.DepositFeePercent:0.##}% + {BankService.Money(Config.DepositFeeFixed)}");
+                panel.TextLines.Add(C($"Frais de dépôt : {Config.DepositFeePercent:0.##}% + {BankService.Money(Config.DepositFeeFixed)}", Theme.FeeColor));
             panel.SetInputPlaceholder("Montant à déposer");
 
             panel.PreviousButtonWithAction("Déposer", async () =>
@@ -801,11 +844,15 @@ namespace BankByLorisStrange
             Panel panel = context.PanelHelper.Create($"{atmName} - Opérations", UIPanel.PanelType.TabPrice, player, async () => await ShowHistory(context, player, account, atmName));
 
             if (history.Count == 0)
-                panel.AddTabLine("Aucune opération", _ => { });
+                panel.AddTabLine(C("Aucune opération", Theme.MutedColor), _ => { });
             foreach (BankTransaction t in history)
             {
-                string fee = t.Fee > 0 ? Color($" (frais {BankService.Money(t.Fee)})", Colors.Grey) : "";
-                panel.AddTabLine($"{BankService.FormatDate(t.Date)} - {t.Type}", BankService.Money(t.Amount) + fee, IconUtils.Others.None.Id, _ => { });
+                bool isDeposit = t.Type.StartsWith("Dépôt");
+                string color = isDeposit ? Theme.DepositColor : t.Type.StartsWith("Retrait") ? Theme.WithdrawColor : Theme.CardColor;
+                string amount = C(Bold((isDeposit ? "+" : "-") + BankService.Money(t.Amount)), color);
+                string fee = t.Fee > 0 ? "<br>" + C($"frais {BankService.Money(t.Fee)}", Theme.FeeColor) : "";
+                panel.AddTabLine($"{C(t.Type, color)}<br>{C(BankService.FormatDate(t.Date), Theme.MutedColor)}", amount + fee,
+                    isDeposit ? Theme.DepositIcon : t.Type.StartsWith("Retrait") ? Theme.WithdrawIcon : Theme.CardIcon, _ => { });
             }
             panel.PreviousButton();
             panel.CloseButton();
@@ -815,7 +862,7 @@ namespace BankByLorisStrange
         private static void ChangePin(ModKit.ModKit context, Player player, BankAccount account, string atmName)
         {
             Panel panel = context.PanelHelper.Create($"{atmName} - Nouveau code", UIPanel.PanelType.Input, player, () => ChangePin(context, player, account, atmName));
-            panel.TextLines.Add("Choisissez un nouveau code à 4 chiffres");
+            panel.TextLines.Add(C("Choisissez un nouveau code à 4 chiffres", Theme.PinColor));
             panel.SetInputPlaceholder("••••");
             panel.isPassword = true;
 
@@ -874,17 +921,17 @@ namespace BankByLorisStrange
             if (account == null) return;
 
             Panel panel = context.PanelHelper.Create("Ma carte bancaire", UIPanel.PanelType.Tab, player, () => CardMenu(context, player));
-            panel.TextLines.Add(Bold(BankPlugin.Title));
-            panel.TextLines.Add($"Titulaire : {player.FullName}");
-            panel.TextLines.Add($"N° : {account.FormattedCardNumber}");
-            panel.TextLines.Add($"Code : {Bold(account.Pin)}");
+            panel.TextLines.Add(Title(BankPlugin.Title));
+            panel.TextLines.Add($"Titulaire : {C(player.FullName, Theme.CardColor)}");
+            panel.TextLines.Add($"N° : {C(account.FormattedCardNumber, Theme.CardColor)}");
+            panel.TextLines.Add($"Code : {C(Bold(account.Pin), Theme.PinColor)}");
             string state = account.Opposed ? Color("En opposition", Colors.Error)
                 : account.BlockedUntil > BankService.Now ? Color("Bloquée temporairement", Colors.Warning)
                 : Color("Active", Colors.Success);
             panel.TextLines.Add($"État : {state}");
-            panel.TextLines.Add(BankService.FeesDescription());
+            panel.TextLines.Add(C(BankService.FeesDescription(), Theme.FeeColor));
 
-            panel.AddTabLine($"Voir mon code : {account.Pin}", _ => BankService.SendPin(player, account, "Rappel de votre carte."));
+            panel.AddTabLine(C($"Voir mon code : {account.Pin}", Theme.PinColor), _ => BankService.SendPin(player, account, "Rappel de votre carte."));
             if (!account.Opposed)
             {
                 panel.AddTabLine(Color("Faire opposition (carte perdue / volée)", Colors.Error), async _ =>
@@ -897,7 +944,7 @@ namespace BankByLorisStrange
             }
             if (Config.CardItemId > 0)
             {
-                panel.AddTabLine($"Commander une nouvelle carte ({BankService.Money(Config.NewCardPrice)})", async _ =>
+                panel.AddTabLine(C($"Commander une nouvelle carte ({BankService.Money(Config.NewCardPrice)})", Theme.CardColor), async _ =>
                 {
                     await OrderCard(player, account, BankPlugin.Title);
                     panel.Refresh();
