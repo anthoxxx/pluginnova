@@ -146,4 +146,4 @@ l'utilisateur, non versionnées, à mettre dans `<Plugin>/libs/`).
 - Enums : `NotificationManager.Type` = Info, Success, Warning, Error ; `UIPanel.PanelType` = Text, Input, Tab, TabPrice.
 - Projet : SDK-style, `net472`, `LangVersion 11.0`, références en `<Private>false</Private>`.
 
-Exemple complet : `Poubelle/`.
+Exemples complets : `Poubelle/`, `TaxiJob/`.
