@@ -19,6 +19,7 @@ using ModKit.Utils;
 using Newtonsoft.Json;
 using SQLite;
 using UnityEngine;
+using Logger = ModKit.Internal.Logger;
 
 namespace TaxiJob
 {
