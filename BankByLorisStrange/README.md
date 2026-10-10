@@ -18,6 +18,11 @@ Plugin bancaire pour **Nova-Life: Amboise** (ModKit + AAMenu).
 
 ## Installation
 
+**DLL prête à l'emploi** : [`release/BankByLorisStrange.dll`](release/BankByLorisStrange.dll) → la copier dans le
+dossier `Plugins` du serveur (avec ModKit et AAMenu), puis passer directement à l'étape 3.
+
+Ou compiler soi-même :
+
 1. Mettre les DLL dans `libs/` (voir [libs/README.md](libs/README.md)), puis `dotnet build -c Release`.
 2. Copier `bin/Release/net472/BankByLorisStrange.dll` dans le dossier `Plugins` du serveur
    (avec ModKit et AAMenu).
