@@ -174,7 +174,7 @@ namespace Contravention
             Enforcer?.Tick(); // blocage immediat
 
             PlayerApi.Notify(officer, "Contraventions",
-                "Contravention #" + fine.Id + " de " + amount + " EUR donnee a " + plate + "." + (locked ? " Vehicule bloque." : ""),
+                "Contravention #" + fine.Id + " de " + amount + " EUR donnee a " + plate + "." + (locked ? " Vehicule bloque, moteur coupe." : ""),
                 NotificationManager.Type.Success);
 
             var owner = ownerId > 0 ? PlayerApi.OnlineByCharacterId(ownerId) : null;
@@ -416,7 +416,7 @@ namespace Contravention
     // =========================================================================
     //  BLOCAGE DES VEHICULES
     // =========================================================================
-    /// <summary>Verrouille regulierement les vehicules qui ont une contravention impayee.</summary>
+    /// <summary>Verrouille, coupe le moteur et fait sortir les occupants des vehicules qui ont une contravention impayee.</summary>
     public class FineEnforcer : MonoBehaviour
     {
         private const float Interval = 3f;
@@ -445,6 +445,7 @@ namespace Contravention
                     if (store.IsBlocked(dbId, VehicleAdapter.GetPlate(veh)))
                     {
                         if (VehicleAdapter.IsLocked(veh) != true) VehicleAdapter.SetLocked(veh, true);
+                        VehicleAdapter.Immobilize(veh);
                         _lockedByUs.Add(dbId);
                     }
                     else if (_lockedByUs.Remove(dbId))
@@ -521,6 +522,14 @@ namespace Contravention
         public static int GetOwnerCharacterId(Vehicle veh) => GetLifeVehicle(veh)?.permissions?.owner?.characterId ?? 0;
 
         public static bool? IsLocked(Vehicle veh) => veh != null ? veh.isLocked : (bool?)null;
+
+        /// <summary>Coupe le moteur et fait sortir tous les occupants.</summary>
+        public static void Immobilize(Vehicle veh)
+        {
+            if (veh == null) return;
+            if (veh.engineStarted) veh.NetworkengineStarted = false;
+            veh.EjectAll();
+        }
 
         public static bool SetLocked(Vehicle veh, bool locked)
         {

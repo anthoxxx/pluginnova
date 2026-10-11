@@ -2,7 +2,8 @@
 
 Plugin Nova-Life : les membres d'une entreprise (ex. police municipale) donnent des
 **contraventions aux véhicules**. Un véhicule verbalisé est **verrouillé** tant que toutes
-ses contraventions ne sont pas payées.
+ses contraventions ne sont pas payées : moteur coupé et occupants éjectés
+(vérifié toutes les 3 secondes).
 
 ## Installation
 - ModKit et AAMenu doivent être installés sur le serveur.
@@ -19,7 +20,7 @@ Les contraventions sont stockées dans `Plugins/Contravention/fines.json`.
 
 ## Compatibilité
 Compilé contre `Assembly-CSharp.dll` 1.2.1.5. Le verrouillage utilise le même mécanisme que le
-jeu (`NetworkisLocked` + `RpcOnLockVehicle`), le paiement `Player.AddMoney(-montant, motif)`.
+jeu (`NetworkisLocked` + `RpcOnLockVehicle`), l'arrêt `NetworkengineStarted` + `EjectAll()`, le paiement `Player.AddMoney(-montant, motif)`.
 
 ## Compilation
 Copier les DLL listées dans `libs/README.md` dans `libs/`, puis `dotnet build -c Release`.
