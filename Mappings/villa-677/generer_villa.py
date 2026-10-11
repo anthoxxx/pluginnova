@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Génère villa-677.json pour le plugin Mapper (Aarnow / ModKit).
 
-ATTENTION : les IDs d'objets ci-dessous sont PROVISOIRES (choisis au hasard).
-Remplace-les par les vrais IDs (wiki Nova-Life > Aides > ID), ajuste les
-tailles si besoin, puis relance : python3 generer_villa.py
+Construite avec les IDs 116, 117, 1110 et 1663. Le rôle de chaque ID (mur,
+sol, toit, déco) et les tailles sont supposés : ajuste-les si besoin, puis
+relance : python3 generer_villa.py
 """
 import json
 from datetime import date
@@ -13,27 +13,30 @@ AUTHOR = "anthoxxx"
 NAME = "villa"
 MAP_ID = 0  # à recopier depuis un export Mapper du serveur
 
-# --- IDs PROVISOIRES : à remplacer ---------------------------------------
+# --- IDs utilisés (fournis par l'utilisateur) ------------------------------
+# Rôle supposé de chaque ID : à corriger ici si ce n'est pas le bon objet.
+MUR, SOL, TOIT, DECO = 116, 117, 1110, 1663
+# None = pas d'objet pour ce rôle, il est ignoré.
 ID = {
-    "sol": 1000,         # dalle de sol
-    "mur": 1001,         # mur plein
-    "mur_fenetre": 1002, # mur avec fenêtre
-    "porte": 1003,       # porte d'entrée
-    "toit": 1004,        # dalle de toit / plafond
-    "escalier": 1005,
-    "eau_piscine": 1006,
-    "bord_piscine": 1007,
-    "cloture": 1008,
-    "portail": 1009,
-    "palmier": 1010,
-    "lampadaire": 1011,
-    "canape": 1012,
-    "table": 1013,
-    "chaise": 1014,
-    "lit": 1015,
-    "transat": 1016,
-    "tv": 1017,
-    "cuisine": 1018,
+    "sol": SOL,
+    "mur": MUR,
+    "mur_fenetre": MUR,
+    "porte": None,       # ouverture laissée vide pour entrer
+    "toit": TOIT,
+    "escalier": None,
+    "eau_piscine": SOL,  # bassin en dalles de sol, en contrebas
+    "bord_piscine": MUR,
+    "cloture": MUR,
+    "portail": None,     # ouverture laissée vide
+    "palmier": DECO,
+    "lampadaire": DECO,
+    "canape": None,
+    "table": None,
+    "chaise": None,
+    "lit": None,
+    "transat": DECO,
+    "tv": None,
+    "cuisine": None,
 }
 
 # --- Dimensions supposées (mètres) ----------------------------------------
@@ -46,6 +49,8 @@ objects = []
 
 
 def put(kind, x, y, z, rot_y=0.0, interior=False):
+    if ID[kind] is None:
+        return
     ox, oy, oz = ORIGIN
     objects.append({
         "id": 0,
