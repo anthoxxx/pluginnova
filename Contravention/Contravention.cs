@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using Life;
 using Life.BizSystem;
 using Life.Network;
@@ -38,7 +37,6 @@ namespace Contravention
             string dir = Path.Combine(PluginPath, "Contravention");
             Config = ContraventionConfig.Load(dir);
             Store = FineStore.Load(dir);
-            VehicleAdapter.LogDiagnostics();
 
             var go = new GameObject("ContraventionEnforcer");
             UnityEngine.Object.DontDestroyOnLoad(go);
@@ -464,8 +462,6 @@ namespace Contravention
 
     // =========================================================================
     //  ACCES AU JEU
-    //  Les membres non garantis par l'API (plaque, proprietaire, verrou, argent)
-    //  sont lus par reflexion pour supporter plusieurs versions du jeu.
     // =========================================================================
     public static class PlayerApi
     {
@@ -485,40 +481,19 @@ namespace Contravention
         public static Player OnlineByCharacterId(int characterId) =>
             Nova.server.Players.FirstOrDefault(p => p != null && p.character != null && p.character.Id == characterId);
 
-        /// <summary>Argent liquide du joueur, -1 si illisible.</summary>
-        public static double Money(Player p)
-        {
-            object value = Refl.Get(p.character, "Money", "money", "Cash", "cash")
-                        ?? Refl.Get(p, "Money", "money", "Cash", "cash");
-            try { return value != null ? Convert.ToDouble(value) : -1; }
-            catch { return -1; }
-        }
+        /// <summary>Argent liquide du joueur.</summary>
+        public static double Money(Player p) => p.Money;
 
         public static bool RemoveMoney(Player p, int amount, string reason)
         {
-            if (Refl.Call(p, "AddMoney", -(double)amount, reason)) return true;
-            if (Refl.Call(p, "AddMoney", -(double)amount)) return true;
-            if (Refl.Call(p, "RemoveMoney", (double)amount, reason)) return true;
-            if (Refl.Call(p, "RemoveMoney", (double)amount)) return true;
-
-            double current = Money(p);
-            if (current < 0) return false;
-            return Refl.Set(p.character, current - amount, "Money", "money");
+            double before = p.Money;
+            p.AddMoney(-amount, reason);
+            return p.Money <= before - amount + 0.01;
         }
     }
 
     public static class VehicleAdapter
     {
-        private static readonly string[] PlateNames = { "plate", "Plate", "licensePlate", "LicensePlate", "Networkplate", "NetworkPlate" };
-        private static readonly string[] LockNames = { "NetworkisLocked", "NetworkIsLocked", "Networklocked", "NetworkLocked", "isLocked", "IsLocked", "locked", "Locked" };
-        private static readonly string[][] OwnerPaths =
-        {
-            new[] { "permissions", "owner", "characterId" },
-            new[] { "Permissions", "Owner", "CharacterId" },
-            new[] { "permissions", "owner", "id" },
-            new[] { "ownerId" }, new[] { "OwnerId" }, new[] { "characterId" }, new[] { "CharacterId" },
-        };
-
         public static List<Vehicle> Nearby(Player player, float radius)
         {
             var pos = PlayerApi.Position(player);
@@ -528,151 +503,34 @@ namespace Contravention
                 .ToList();
         }
 
-        public static int GetDbId(Vehicle veh)
-        {
-            try { return veh != null ? veh.VehicleDbId : 0; }
-            catch { return 0; }
-        }
+        public static int GetDbId(Vehicle veh) => veh != null ? veh.VehicleDbId : 0;
 
         public static LifeVehicle GetLifeVehicle(Vehicle veh)
         {
             int id = GetDbId(veh);
-            if (id <= 0) return null;
-            try { return Nova.v.GetVehicle(id); }
-            catch { return null; }
+            return id > 0 ? Nova.v.GetVehicle(id) : null;
         }
 
         public static string GetPlate(Vehicle veh)
         {
             if (veh == null) return null;
-            var plate = Refl.Get(GetLifeVehicle(veh), PlateNames) as string ?? Refl.Get(veh, PlateNames) as string;
+            var plate = GetLifeVehicle(veh)?.plate;
             return string.IsNullOrWhiteSpace(plate) ? "#" + GetDbId(veh) : plate;
         }
 
-        public static int GetOwnerCharacterId(Vehicle veh)
-        {
-            var life = GetLifeVehicle(veh);
-            foreach (var path in OwnerPaths)
-            {
-                object current = life;
-                foreach (var name in path)
-                    current = Refl.Get(current, name);
-                if (current == null) continue;
-                try
-                {
-                    int id = Convert.ToInt32(current);
-                    if (id > 0) return id;
-                }
-                catch { }
-            }
-            return 0;
-        }
+        public static int GetOwnerCharacterId(Vehicle veh) => GetLifeVehicle(veh)?.permissions?.owner?.characterId ?? 0;
 
-        public static bool? IsLocked(Vehicle veh) => Refl.Get(veh, LockNames) as bool?;
+        public static bool? IsLocked(Vehicle veh) => veh != null ? veh.isLocked : (bool?)null;
 
         public static bool SetLocked(Vehicle veh, bool locked)
         {
             if (veh == null) return false;
-            if (Refl.Set(veh, locked, LockNames)) return true;
-            if (Refl.Call(veh, "SetLock", locked)) return true;
-            if (Refl.Call(veh, "SetLocked", locked)) return true;
-            return Refl.Set(GetLifeVehicle(veh), locked, LockNames);
-        }
-
-        /// <summary>Ecrit dans le log ce qui a ete trouve, pour verifier la compatibilite avec la version du jeu.</summary>
-        public static void LogDiagnostics()
-        {
-            Debug.Log("[Contravention] Vehicle : verrou=" + (Refl.Find(typeof(Vehicle), LockNames) ?? "INTROUVABLE") +
-                      " | plaque=" + (Refl.Find(typeof(Vehicle), PlateNames) ?? "-") +
-                      " | LifeVehicle plaque=" + (Refl.Find(typeof(LifeVehicle), PlateNames) ?? "-"));
-            Debug.Log("[Contravention] Membres 'lock' de Vehicle : " + string.Join(", ", Refl.Matching(typeof(Vehicle), "lock")));
-            Debug.Log("[Contravention] Membres 'money' de Player/Characters : " +
-                      string.Join(", ", Refl.Matching(typeof(Player), "money").Concat(Refl.Matching(typeof(Life.DB.Characters), "money"))));
-        }
-    }
-
-    internal static class Refl
-    {
-        private const BindingFlags Flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
-
-        public static object Get(object obj, params string[] names)
-        {
-            if (obj == null) return null;
-            var type = obj.GetType();
-            foreach (var name in names)
+            if (veh.isLocked != locked)
             {
-                try
-                {
-                    var prop = type.GetProperty(name, Flags);
-                    if (prop != null && prop.CanRead && prop.GetIndexParameters().Length == 0) return prop.GetValue(obj, null);
-                    var field = type.GetField(name, Flags);
-                    if (field != null) return field.GetValue(obj);
-                }
-                catch { }
+                veh.NetworkisLocked = locked;
+                veh.RpcOnLockVehicle();
             }
-            return null;
+            return true;
         }
-
-        public static bool Set(object obj, object value, params string[] names)
-        {
-            if (obj == null) return false;
-            var type = obj.GetType();
-            foreach (var name in names)
-            {
-                try
-                {
-                    var prop = type.GetProperty(name, Flags);
-                    if (prop != null && prop.CanWrite)
-                    {
-                        prop.SetValue(obj, Convert.ChangeType(value, prop.PropertyType), null);
-                        return true;
-                    }
-                    var field = type.GetField(name, Flags);
-                    if (field != null && !field.IsInitOnly)
-                    {
-                        field.SetValue(obj, Convert.ChangeType(value, field.FieldType));
-                        return true;
-                    }
-                }
-                catch { }
-            }
-            return false;
-        }
-
-        /// <summary>Appelle la methode dont les parametres acceptent les arguments donnes. false si absente ou en erreur.</summary>
-        public static bool Call(object obj, string name, params object[] args)
-        {
-            if (obj == null) return false;
-            foreach (var method in obj.GetType().GetMethods(Flags).Where(m => m.Name == name))
-            {
-                var parameters = method.GetParameters();
-                if (parameters.Length != args.Length) continue;
-                try
-                {
-                    var converted = new object[args.Length];
-                    for (int i = 0; i < args.Length; i++)
-                        converted[i] = Convert.ChangeType(args[i], parameters[i].ParameterType);
-                    method.Invoke(obj, converted);
-                    return true;
-                }
-                catch (InvalidCastException) { }
-                catch (FormatException) { }
-                catch (Exception ex)
-                {
-                    Debug.Log("[Contravention] " + name + " : " + (ex.InnerException ?? ex).Message);
-                    return false;
-                }
-            }
-            return false;
-        }
-
-        public static string Find(Type type, params string[] names) =>
-            names.FirstOrDefault(n => type.GetProperty(n, Flags) != null || type.GetField(n, Flags) != null);
-
-        public static IEnumerable<string> Matching(Type type, string part) =>
-            type.GetMembers(Flags)
-                .Where(m => (m is FieldInfo || m is PropertyInfo || m is MethodInfo) && m.Name.IndexOf(part, StringComparison.OrdinalIgnoreCase) >= 0)
-                .Select(m => m.Name)
-                .Distinct();
     }
 }

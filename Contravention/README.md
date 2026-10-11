@@ -18,9 +18,8 @@ ses contraventions ne sont pas payées.
 Les contraventions sont stockées dans `Plugins/Contravention/fines.json`.
 
 ## Compatibilité
-La plaque, le propriétaire, le verrou et l'argent sont lus par réflexion. Au démarrage, le log
-serveur affiche une ligne `[Contravention] Vehicle : verrou=...` : si elle indique
-`INTROUVABLE`, envoyer les lignes `[Contravention]` du log pour adapter le plugin.
+Compilé contre `Assembly-CSharp.dll` 1.2.1.5. Le verrouillage utilise le même mécanisme que le
+jeu (`NetworkisLocked` + `RpcOnLockVehicle`), le paiement `Player.AddMoney(-montant, motif)`.
 
 ## Compilation
 Copier les DLL listées dans `libs/README.md` dans `libs/`, puis `dotnet build -c Release`.
