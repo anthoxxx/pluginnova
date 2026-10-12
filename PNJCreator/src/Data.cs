@@ -39,6 +39,13 @@ namespace PNJCreator
         public float SpawnDelaySeconds = 10f;
         /// <summary>Couleur du nom au-dessus de la tête des PNJ.</summary>
         public string NameColor = "#f7af57";
+        /// <summary>Affiche la réplique du PNJ dans une bulle au-dessus de sa tête (sous son nom).</summary>
+        public bool SpeechBubble = true;
+        /// <summary>Allume l'icône « parle » du chat vocal pendant que le PNJ parle.</summary>
+        public bool TalkingIndicator = true;
+        /// <summary>Longueur maximale du texte dans la bulle (le chat garde la réplique complète).</summary>
+        public int BubbleMaxChars = 120;
+        public string BubbleColor = "#ffffff";
     }
 
     public class AiSettings
@@ -318,6 +325,8 @@ namespace PNJCreator
             c.Admin.RequiredAdminLevel = Mathf.Clamp(c.Admin.RequiredAdminLevel, 0, 100);
             c.General.SpawnDelaySeconds = Clamp(c.General.SpawnDelaySeconds, 0f, 300f, 10f);
             if (string.IsNullOrWhiteSpace(c.General.NameColor) || !c.General.NameColor.StartsWith("#")) c.General.NameColor = "#f7af57";
+            if (string.IsNullOrWhiteSpace(c.General.BubbleColor) || !c.General.BubbleColor.StartsWith("#")) c.General.BubbleColor = "#ffffff";
+            c.General.BubbleMaxChars = Mathf.Clamp(c.General.BubbleMaxChars <= 0 ? 120 : c.General.BubbleMaxChars, 20, 300);
 
             var ai = c.Ai;
             if (ai.Providers == null) ai.Providers = new Dictionary<string, ProviderSettings>();

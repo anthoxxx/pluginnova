@@ -1189,6 +1189,21 @@ namespace PNJCreator
                         }
                         SettingsMenu(player);
                     }, () => SettingsMenu(player)));
+            Line(panel, player, "Bulle de dialogue", c.General.SpeechBubble ? "Oui" : "Non", Icon("prompt"), () =>
+            {
+                c.General.SpeechBubble = !c.General.SpeechBubble;
+                Store.SaveConfig();
+                SettingsMenu(player);
+            });
+            Line(panel, player, "Icône « parle » pendant la réplique", c.General.TalkingIndicator ? "Oui" : "Non", Icon("ai"), () =>
+            {
+                c.General.TalkingIndicator = !c.General.TalkingIndicator;
+                Store.SaveConfig();
+                SettingsMenu(player);
+            });
+            Line(panel, player, "Longueur max. de la bulle", c.General.BubbleMaxChars + " caractères", Icon("prompt"), () =>
+                AskNumber(player, "Bulle", "Nombre de caractères maximum dans la bulle (le chat garde la réplique complète).", c.General.BubbleMaxChars, 20f, 300f,
+                    v => { c.General.BubbleMaxChars = Mathf.RoundToInt(v); Store.SaveConfig(); SettingsMenu(player); }, () => SettingsMenu(player)));
             Line(panel, player, "Couleur des noms", $"<color={c.General.NameColor}>{c.General.NameColor}</color>", Icon("color"), () =>
                 AskText(player, "Couleur des noms", "Couleur hexadécimale du nom des PNJ (ex. #f7af57).", "#f7af57", value =>
                 {

@@ -16,7 +16,7 @@ namespace PNJCreator
     public class PNJCreator : Plugin
     {
         public const string DisplayName = "PNJ by Loris Strange";
-        public const string Version = "1.1.0";
+        public const string Version = "1.2.0";
         public const string Credit = "Créé par Loris Strange";
 
         public DataStore Store;
@@ -225,6 +225,7 @@ namespace PNJCreator
             if (string.IsNullOrWhiteSpace(reply)) return;
             Vector3 at = Npcs.Instances.TryGetValue(npc.Id, out var inst) ? inst.Position : npc.Position;
             Nova.server.SendLocalText($"<color={Store.Config.General.NameColor}>{npc.Name}</color> : {reply}", npc.HearRange, at);
+            Npcs.ShowSpeech(npc, reply, Store.Config.General, Runner);
         }
 
         // ------------------------------------------------------------------

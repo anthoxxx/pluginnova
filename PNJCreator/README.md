@@ -99,6 +99,15 @@ Modes de réponse (menu **Fournisseurs d'IA → Mode de réponse actif**) :
 - Si un fournisseur payant n'a pas de clé, ou si l'IA (locale ou payante) ne répond pas, le PNJ
   répond automatiquement avec ses réponses scriptées : les joueurs ont toujours une réponse.
 
+## Bulle de dialogue
+
+Quand un PNJ répond, sa réplique s'affiche quelques secondes **au-dessus de sa tête**, sous son
+nom (3 à 12 s selon la longueur), et l'icône « parle » du chat vocal s'allume sur lui. Le chat
+garde la réplique complète. Réglages : **Réglages → Bulle de dialogue / Icône « parle » /
+Longueur max. de la bulle** (`General.SpeechBubble`, `TalkingIndicator`, `BubbleMaxChars`,
+`BubbleColor`). La bulle utilise le texte du nom du personnage (synchronisé par le jeu) : un
+vrai son de voix n'est pas possible depuis un plugin serveur.
+
 ## IA conversationnelle
 
 - Le joueur tape `/say Bonjour !` près d'un PNJ dont l'IA est activée.

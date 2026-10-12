@@ -5,7 +5,7 @@
     <LangVersion>11.0</LangVersion>
     <AssemblyName>PNJCreator</AssemblyName>
     <RootNamespace>PNJCreator</RootNamespace>
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
     <Authors>Loris Strange</Authors>
     <Product>PNJ by Loris Strange</Product>
     <Company>Loris Strange</Company>

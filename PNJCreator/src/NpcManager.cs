@@ -27,6 +27,9 @@ namespace PNJCreator
         public float WaitUntil;
         public bool Moving;
 
+        /// <summary>Incrémenté à chaque réplique : seule la dernière bulle remet le nom à la fin.</summary>
+        public int SpeechToken;
+
         /// <summary>Connexions qui voient déjà ce PNJ (pour leur renvoyer l'apparence à leur arrivée).</summary>
         public HashSet<int> KnownObservers = new HashSet<int>();
 
@@ -301,6 +304,53 @@ namespace PNJCreator
                 return ids;
             }
             catch { return null; }
+        }
+
+        /// <summary>
+        /// Bulle de dialogue : le texte 3D au-dessus de la tête (le nom du personnage, synchronisé par le jeu)
+        /// affiche « Nom + réplique » pendant quelques secondes, et l'icône « parle » du chat vocal s'allume.
+        /// Retourne la durée d'affichage, ou 0 si rien n'est affiché.
+        /// </summary>
+        public float ShowSpeech(NpcData data, string text, GeneralSettings g, NpcRunner runner)
+        {
+            if (!Instances.TryGetValue(data.Id, out var inst) || !inst.Alive) return 0f;
+            if (!g.SpeechBubble && !g.TalkingIndicator) return 0f;
+            // ~15 caractères lus par seconde, entre 3 et 12 secondes.
+            float duration = Mathf.Clamp(2f + text.Length / 15f, 3f, 12f);
+            int token = ++inst.SpeechToken;
+            if (g.SpeechBubble) inst.Setup.NetworkFullName = BubbleText(data.Name, text, g);
+            if (g.TalkingIndicator) SetSyncVar(inst.Setup, "NetworkisTalking", true);
+            runner.RunAfter(duration, () =>
+            {
+                if (!inst.Alive || inst.SpeechToken != token) return; // une réplique plus récente a pris la main
+                inst.Setup.NetworkFullName = inst.Data.Name;
+                SetSyncVar(inst.Setup, "NetworkisTalking", false);
+            });
+            return duration;
+        }
+
+        public static string BubbleText(string name, string text, GeneralSettings g)
+        {
+            const int lineWidth = 32;
+            string t = text.Trim();
+            if (t.Length > g.BubbleMaxChars)
+            {
+                t = t.Substring(0, g.BubbleMaxChars);
+                int cut = t.LastIndexOf(' ');
+                if (cut > g.BubbleMaxChars / 2) t = t.Substring(0, cut); // pas de mot coupé en deux
+                t = t.TrimEnd(' ', ',', ';', ':') + "…";
+            }
+            var lines = new List<string>();
+            string line = "";
+            foreach (string word in t.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                string w = word.Length > lineWidth ? word.Substring(0, lineWidth) : word;
+                if (line.Length > 0 && line.Length + 1 + w.Length > lineWidth) { lines.Add(line); line = w; }
+                else line = line.Length == 0 ? w : line + " " + w;
+            }
+            if (line.Length > 0) lines.Add(line);
+            // Texte riche TextMeshPro : nom en haut (couleur du nom), réplique plus petite en dessous.
+            return $"{name}\n<size=75%><color={g.BubbleColor}>« {string.Join("\n", lines)} »</color></size>";
         }
 
         public void ApplyName(NpcData data)
