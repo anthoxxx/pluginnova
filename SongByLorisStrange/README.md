@@ -37,6 +37,10 @@ Le menu propose :
 Commandes aussi disponibles : **`/song`** (ou `/musique`) ouvre le même menu, **`/song <lien>`**
 lance directement le lien, **`/songstop`** (staff en service admin) coupe tous les écrans.
 
+**Aucun écran trouvé ?** Tape **`/songdebug`** à côté de l'écran : la liste des objets posés à
+moins de 10 m s'affiche avec leur id. Si ton écran n'est pas marqué `[ÉCRAN WEB]`, ajoute son id
+dans `ScreenItemIds` de `config.json` puis redémarre le serveur.
+
 La radio sert de repère : le son vient toujours de l'écran web le plus proche (la radio du jeu
 ne peut lire que ses stations intégrées).
 
@@ -52,6 +56,7 @@ en service (réglable avec `OwnerOnly`). Les joueurs à 30 m sont prévenus.
 | `AnnounceRange` | `30` | distance des joueurs prévenus |
 | `OwnerOnly` | `true` | `false` = tout le monde peut changer la musique |
 | `HistorySize` | `20` | nombre de liens gardés |
+| `ScreenItemIds` | `[]` | ids d'objets à traiter comme écrans web si la détection les rate |
 | `ExtraItemIds` | `[]` | ids d'objets en plus pour la ligne Proximité |
 | `YoutubeUrlFormat` | lien `embed` YouTube | page chargée sur l'écran, `{id}` = vidéo, `{start}` = seconde de départ |
 

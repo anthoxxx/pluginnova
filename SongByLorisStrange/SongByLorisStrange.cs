@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text.RegularExpressions;
 using Life;
 using Life.AreaSystem;
@@ -69,7 +70,7 @@ namespace SongByLorisStrange
             }
 
             // Proximité : une ligne quand le joueur est près d'un écran web ou d'une radio
-            List<int> itemIds = FindItemIds<WebScreenRP>()
+            List<int> itemIds = ScreenItemIds
                 .Concat(FindItemIds<RadioObject>())
                 .Concat(config.ExtraItemIds)
                 .Distinct()
@@ -122,6 +123,9 @@ namespace SongByLorisStrange
                 (Action<Player, string[]>)((player, args) =>
                     OpenClosest(player, args.Length > 0 ? string.Join(" ", args) : null))).Register();
 
+            new SChatCommand("/songdebug", "Lister les objets posés autour de soi", "/songdebug",
+                (Action<Player, string[]>)((player, args) => DebugNearbyObjects(player))).Register();
+
             new SChatCommand("/songstop", "Couper la musique de tous les écrans (staff)", "/songstop",
                 (Action<Player, string[]>)((player, args) => StopAll(player))).Register();
         }
@@ -129,7 +133,7 @@ namespace SongByLorisStrange
         /// <summary>Ouvre le menu de l'écran le plus proche, ou joue directement <paramref name="link"/>.</summary>
         private void OpenClosest(Player player, string link)
         {
-            WebScreenRP screen = GetClosestScreen(player);
+            MusicScreen screen = GetClosestScreen(player);
             if (screen == null)
             {
                 player.Notify(Title, $"Aucun écran web à moins de {config.MaxDistance} m. Pose un écran web (à côté de ta radio) : c'est lui qui joue la musique.", NotificationManager.Type.Error, 8f);
@@ -156,7 +160,7 @@ namespace SongByLorisStrange
             }
 
             int count = 0;
-            foreach (WebScreenRP screen in GetAllScreens().Where(IsPlaying))
+            foreach (MusicScreen screen in GetAllScreens().Where(IsPlaying))
             {
                 SetUrl(screen, BlankUrl);
                 count++;
@@ -168,7 +172,7 @@ namespace SongByLorisStrange
         //  Menus
         // ------------------------------------------------------------------
 
-        private void OpenMenu(Player player, WebScreenRP screen)
+        private void OpenMenu(Player player, MusicScreen screen)
         {
             string current = IsPlaying(screen) ? GetUrl(screen) : "rien";
 
@@ -194,7 +198,7 @@ namespace SongByLorisStrange
             player.ShowPanelUI(panel);
         }
 
-        private void AskLink(Player player, WebScreenRP screen)
+        private void AskLink(Player player, MusicScreen screen)
         {
             UIPanel panel = new UIPanel($"{Title} - Lien", UIPanel.PanelType.Input)
                 .SetText("Colle un lien YouTube (vidéo, short ou live).\nLes autres liens http(s) (webradio, mp3...) sont aussi acceptés.")
@@ -212,7 +216,7 @@ namespace SongByLorisStrange
             player.ShowPanelUI(panel);
         }
 
-        private void OpenHistory(Player player, WebScreenRP screen)
+        private void OpenHistory(Player player, MusicScreen screen)
         {
             UIPanel panel = new UIPanel($"{Title} - Historique", UIPanel.PanelType.Tab);
 
@@ -242,7 +246,7 @@ namespace SongByLorisStrange
         //  Lecture
         // ------------------------------------------------------------------
 
-        private bool Play(Player player, WebScreenRP screen, string link)
+        private bool Play(Player player, MusicScreen screen, string link)
         {
             link = link?.Trim();
             if (string.IsNullOrEmpty(link) || link.Length > 500 ||
@@ -262,14 +266,14 @@ namespace SongByLorisStrange
             SetUrl(screen, ToScreenUrl(link));
             AddToHistory(link, player.FullName);
 
-            foreach (Player listener in Nova.server.GetPlayersInRange(config.AnnounceRange, screen.transform.position))
+            foreach (Player listener in Nova.server.GetPlayersInRange(config.AnnounceRange, screen.Position))
                 listener.Notify(Title, $"{player.FullName} a lancé une musique.", NotificationManager.Type.Info, 5f);
 
-            Debug.Log($"[{Title}] {player.FullName} joue {link} (terrain {screen.areaId}, objet {screen.objectId})");
+            Debug.Log($"[{Title}] {player.FullName} joue {link} (terrain {screen.AreaId}, objet {screen.Key})");
             return true;
         }
 
-        private void Stop(Player player, WebScreenRP screen)
+        private void Stop(Player player, MusicScreen screen)
         {
             if (screen == null || !CanControl(player, screen)) return;
 
@@ -294,20 +298,44 @@ namespace SongByLorisStrange
         // ------------------------------------------------------------------
 
         /// <summary>
-        /// Même mécanisme que le jeu pour les panneaux : modifier les données de l'objet
-        /// les sauvegarde et les envoie à tous les joueurs (RpcSetObject).
+        /// Même mécanisme que le jeu (AreaObject.SetData) : l'URL est écrite dans les données
+        /// de l'objet, qui sont sauvegardées et envoyées à tous les joueurs (RpcSetObject).
         /// </summary>
-        private static void SetUrl(WebScreenRP screen, string url)
+        private static void SetUrl(MusicScreen screen, string url)
         {
-            screen.SetData(JsonConvert.SerializeObject(new WebScreenData { url = url }));
+            string json = JsonConvert.SerializeObject(new WebScreenData { url = url });
+
+            NetworkArea instance = Nova.a.GetAreaById(screen.AreaId)?.instance;
+            if (instance?.localObjects != null && instance.localObjects.TryGetValue(screen.Key, out AreaObject areaObject) && areaObject != null)
+            {
+                areaObject.SetData(json);
+                return;
+            }
+
+            screen.Object.data = json;
+            if (instance?.objects != null) instance.objects[screen.Key] = screen.Object;
+
+            // NetworkAreaManager est interne au jeu : appel par réflexion de
+            // NetworkAreaManager.instance.RpcSetObject(areaId, key, objet, false)
+            Type manager = typeof(AreaObject).Assembly.GetType("Life.AreaSystem.NetworkAreaManager");
+            object managerInstance = manager?.GetField("instance", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)?.GetValue(null);
+            MethodInfo rpc = manager?.GetMethod("RpcSetObject", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance,
+                null, new[] { typeof(int), typeof(int), typeof(LifeObject), typeof(bool) }, null);
+            if (managerInstance == null || rpc == null)
+            {
+                Debug.LogError($"[{Title}] RpcSetObject introuvable : l'écran ne sera mis à jour qu'au prochain chargement.");
+                return;
+            }
+            rpc.Invoke(managerInstance, new object[] { (int)screen.AreaId, screen.Key, screen.Object, false });
         }
 
-        private static string GetUrl(WebScreenRP screen)
+        private static string GetUrl(MusicScreen screen)
         {
-            if (string.IsNullOrEmpty(screen.data)) return null;
+            string data = screen.Object.data;
+            if (string.IsNullOrEmpty(data)) return null;
             try
             {
-                return JsonConvert.DeserializeObject<WebScreenData>(screen.data)?.url;
+                return JsonConvert.DeserializeObject<WebScreenData>(data)?.url;
             }
             catch (JsonException)
             {
@@ -315,37 +343,62 @@ namespace SongByLorisStrange
             }
         }
 
-        private static bool IsPlaying(WebScreenRP screen)
+        private static bool IsPlaying(MusicScreen screen)
         {
             string url = GetUrl(screen);
             return !string.IsNullOrEmpty(url) && url != BlankUrl;
         }
 
-        private static IEnumerable<WebScreenRP> GetAllScreens()
+        /// <summary>Ids des items « écran web ». Calculé au premier besoin (les items doivent être chargés).</summary>
+        private HashSet<int> ScreenItemIds
         {
+            get
+            {
+                if (screenItemIds == null || screenItemIds.Count == 0)
+                {
+                    screenItemIds = new HashSet<int>(FindItemIds<WebScreenRP>().Concat(config.ScreenItemIds));
+                    // Secours : écrans déjà instanciés sur le serveur
+                    foreach (LifeArea area in Nova.a.areas)
+                    {
+                        Dictionary<int, AreaObject> local = area?.instance?.localObjects;
+                        if (local == null) continue;
+                        foreach (AreaObject obj in local.Values.ToList())
+                            if (obj != null && obj.GetComponentInChildren<WebScreenRP>(true) != null)
+                                screenItemIds.Add(obj.itemId);
+                    }
+                    Debug.Log($"[{Title}] écrans web : objets {string.Join(", ", screenItemIds)}");
+                }
+                return screenItemIds;
+            }
+        }
+        private HashSet<int> screenItemIds;
+
+        /// <summary>Tous les écrans web posés, lus dans les données des terrains (comme ModKit).</summary>
+        private IEnumerable<MusicScreen> GetAllScreens()
+        {
+            HashSet<int> itemIds = ScreenItemIds;
             foreach (LifeArea area in Nova.a.areas)
             {
-                Dictionary<int, AreaObject> objects = area?.instance?.localObjects;
+                Dictionary<int, LifeObject> objects = area?.instance?.objects;
                 if (objects == null) continue;
 
-                foreach (AreaObject obj in objects.Values)
+                foreach (KeyValuePair<int, LifeObject> entry in objects.ToList())
                 {
-                    if (obj == null) continue;
-                    WebScreenRP screen = obj.GetComponent<WebScreenRP>();
-                    if (screen != null) yield return screen;
+                    if (entry.Value != null && itemIds.Contains(entry.Value.objectId))
+                        yield return new MusicScreen(area.areaId, entry.Key, entry.Value);
                 }
             }
         }
 
-        private WebScreenRP GetClosestScreen(Player player)
+        private MusicScreen GetClosestScreen(Player player)
         {
             Vector3 position = player.setup.transform.position;
-            WebScreenRP closest = null;
+            MusicScreen closest = null;
             float best = config.MaxDistance;
 
-            foreach (WebScreenRP screen in GetAllScreens())
+            foreach (MusicScreen screen in GetAllScreens())
             {
-                float distance = Vector3.Distance(position, screen.transform.position);
+                float distance = Vector3.Distance(position, screen.Position);
                 if (distance <= best)
                 {
                     best = distance;
@@ -355,12 +408,44 @@ namespace SongByLorisStrange
             return closest;
         }
 
-        private bool CanControl(Player player, WebScreenRP screen)
+        private bool CanControl(Player player, MusicScreen screen)
         {
             if (player.IsAdminService || !config.OwnerOnly) return true;
 
-            LifeArea area = Nova.a.GetAreaById(screen.areaId);
+            LifeArea area = Nova.a.GetAreaById(screen.AreaId);
             return area?.permissions != null && area.permissions.HasPermission(player.character.Id);
+        }
+
+        /// <summary>/songdebug : liste les objets posés autour du joueur, pour trouver l'id d'un écran.</summary>
+        private void DebugNearbyObjects(Player player)
+        {
+            Vector3 position = player.setup.transform.position;
+            List<string> lines = new List<string>();
+
+            foreach (LifeArea area in Nova.a.areas)
+            {
+                Dictionary<int, LifeObject> objects = area?.instance?.objects;
+                if (objects == null) continue;
+
+                foreach (LifeObject obj in objects.Values.ToList())
+                {
+                    if (obj == null) continue;
+                    float distance = Vector3.Distance(position, new Vector3(obj.x, obj.y, obj.z));
+                    if (distance > 10f) continue;
+
+                    Item item = Nova.man.item.GetItem(obj.objectId);
+                    string kind = ScreenItemIds.Contains(obj.objectId) ? " [ÉCRAN WEB]" : "";
+                    lines.Add($"{distance:0.0} m : objet {obj.objectId} ({(item != null ? item.itemName : "?")}), terrain {area.areaId}{kind}");
+                }
+            }
+
+            string text = lines.Count == 0
+                ? "Aucun objet posé à moins de 10 m."
+                : string.Join("\n", lines.Take(15));
+            Debug.Log($"[{Title}] /songdebug par {player.FullName} :\n{text}");
+            player.ShowPanelUI(new UIPanel($"{Title} - Objets proches", UIPanel.PanelType.Text)
+                .SetText($"Écrans web reconnus : {string.Join(", ", ScreenItemIds)}\n\n{text}")
+                .AddButton("Fermer", p => player.ClosePanel(p)));
         }
 
         // ------------------------------------------------------------------
@@ -445,6 +530,25 @@ namespace SongByLorisStrange
 
         /// <summary>Ids d'items en plus pour la ligne AAMenu > Proximité (écrans et radios sont détectés seuls).</summary>
         public List<int> ExtraItemIds = new List<int>();
+
+        /// <summary>Ids d'items à traiter comme écrans web si la détection automatique les rate (voir /songdebug).</summary>
+        public List<int> ScreenItemIds = new List<int>();
+    }
+
+    /// <summary>Un écran web posé : son terrain, sa clé dans le terrain et ses données.</summary>
+    public class MusicScreen
+    {
+        public uint AreaId { get; }
+        public int Key { get; }
+        public LifeObject Object { get; }
+        public Vector3 Position => new Vector3(Object.x, Object.y, Object.z);
+
+        public MusicScreen(uint areaId, int key, LifeObject obj)
+        {
+            AreaId = areaId;
+            Key = key;
+            Object = obj;
+        }
     }
 
     public class SongEntry
