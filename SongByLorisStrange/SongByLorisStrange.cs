@@ -5,8 +5,11 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using Life;
 using Life.AreaSystem;
+using Life.InventorySystem;
 using Life.Network;
 using Life.UI;
+using ModKit.Helper;
+using ModKit.Interfaces;
 using Newtonsoft.Json;
 using UnityEngine;
 
@@ -16,9 +19,9 @@ namespace SongByLorisStrange
     /// Song By Loris Strange : diffuse un lien (YouTube ou autre) sur les écrans web
     /// du jeu (<see cref="WebScreenRP"/>). L'URL est enregistrée dans les données de
     /// l'objet : le jeu la synchronise à tous les joueurs, qui voient et entendent
-    /// la même chose.
+    /// la même chose. Accessible depuis AAMenu (Proximité / Interactions) ou /song.
     /// </summary>
-    public class SongPlugin : Plugin
+    public class SongPlugin : ModKit.ModKit
     {
         private const string Title = "Song By Loris Strange";
         private const string BlankUrl = "about:blank";
@@ -33,7 +36,10 @@ namespace SongByLorisStrange
         private SongConfig config;
         private List<SongEntry> history = new List<SongEntry>();
 
-        public SongPlugin(IGameAPI api) : base(api) { }
+        public SongPlugin(IGameAPI api) : base(api)
+        {
+            PluginInformations = new PluginInformations(AssemblyHelper.GetName(), "1.0.0", "anthoxxx");
+        }
 
         public override void OnPluginInit()
         {
@@ -45,8 +51,65 @@ namespace SongByLorisStrange
             LoadHistory();
 
             RegisterCommands();
+            RegisterAAMenu();
 
             Debug.Log($"[{Title}] chargé");
+        }
+
+        // ------------------------------------------------------------------
+        //  AAMenu
+        // ------------------------------------------------------------------
+
+        private void RegisterAAMenu()
+        {
+            if (AAMenu.AAMenu.menu == null)
+            {
+                Debug.LogWarning($"[{Title}] AAMenu introuvable : utilisez la commande /song.");
+                return;
+            }
+
+            // Proximité : une ligne quand le joueur est près d'un écran web ou d'une radio
+            List<int> itemIds = FindItemIds<WebScreenRP>()
+                .Concat(FindItemIds<RadioObject>())
+                .Concat(config.ExtraItemIds)
+                .Distinct()
+                .ToList();
+            foreach (int itemId in itemIds)
+                AAMenu.Menu.AddProximityTabLine(PluginInformations, itemId, Title, ui => OpenFromAAMenu(ui));
+            Debug.Log($"[{Title}] AAMenu > Proximité : objets {string.Join(", ", itemIds)}");
+
+            // Interactions : marche partout, prend l'écran le plus proche
+            AAMenu.Menu.AddInteractionTabLine(PluginInformations, Title, ui => OpenFromAAMenu(ui));
+
+            // Administration > Plugins : tout couper
+            AAMenu.Menu.AddAdminPluginTabLine(PluginInformations, 1, $"{Title} : couper toutes les musiques", ui =>
+            {
+                Player player = PanelHelper.ReturnPlayerFromPanel(ui);
+                if (player == null) return;
+                player.ClosePanel(ui);
+                StopAll(player);
+            });
+        }
+
+        private void OpenFromAAMenu(UIPanel ui)
+        {
+            Player player = PanelHelper.ReturnPlayerFromPanel(ui);
+            if (player == null) return;
+            player.ClosePanel(ui);
+            OpenClosest(player, null);
+        }
+
+        /// <summary>Ids des items qui posent un objet du type T (écran web, radio...).</summary>
+        private static List<int> FindItemIds<T>() where T : AreaObject
+        {
+            List<int> ids = new List<int>();
+            foreach (Item item in Nova.man.item.items)
+            {
+                if (item == null || item.models == null) continue;
+                if (item.models.Any(m => m != null && m.placeables != null && m.placeables.Any(p => p is T)))
+                    ids.Add(item.id);
+            }
+            return ids;
         }
 
         // ------------------------------------------------------------------
@@ -57,43 +120,48 @@ namespace SongByLorisStrange
         {
             new SChatCommand("/song", new[] { "/musique" }, "Mettre une musique sur l'écran le plus proche", "/song",
                 (Action<Player, string[]>)((player, args) =>
-                {
-                    WebScreenRP screen = GetClosestScreen(player);
-                    if (screen == null)
-                    {
-                        player.Notify(Title, $"Approche-toi d'un écran web (moins de {config.MaxDistance} m).", NotificationManager.Type.Error, 5f);
-                        return;
-                    }
-                    if (!CanControl(player, screen))
-                    {
-                        player.Notify(Title, "Seuls le propriétaire du terrain, ses co-propriétaires et le staff peuvent changer la musique.", NotificationManager.Type.Error, 5f);
-                        return;
-                    }
-
-                    // "/song <lien>" lance directement le lien
-                    if (args.Length > 0)
-                        Play(player, screen, string.Join(" ", args));
-                    else
-                        OpenMenu(player, screen);
-                })).Register();
+                    OpenClosest(player, args.Length > 0 ? string.Join(" ", args) : null))).Register();
 
             new SChatCommand("/songstop", "Couper la musique de tous les écrans (staff)", "/songstop",
-                (Action<Player, string[]>)((player, args) =>
-                {
-                    if (!player.IsAdminService)
-                    {
-                        player.Notify(Title, "Vous devez être staff et en service admin.", NotificationManager.Type.Error, 5f);
-                        return;
-                    }
+                (Action<Player, string[]>)((player, args) => StopAll(player))).Register();
+        }
 
-                    int count = 0;
-                    foreach (WebScreenRP screen in GetAllScreens().Where(IsPlaying))
-                    {
-                        SetUrl(screen, BlankUrl);
-                        count++;
-                    }
-                    player.Notify(Title, $"{count} écran(s) coupé(s).", NotificationManager.Type.Success, 5f);
-                })).Register();
+        /// <summary>Ouvre le menu de l'écran le plus proche, ou joue directement <paramref name="link"/>.</summary>
+        private void OpenClosest(Player player, string link)
+        {
+            WebScreenRP screen = GetClosestScreen(player);
+            if (screen == null)
+            {
+                player.Notify(Title, $"Aucun écran web à moins de {config.MaxDistance} m. Pose un écran web (à côté de ta radio) : c'est lui qui joue la musique.", NotificationManager.Type.Error, 8f);
+                return;
+            }
+            if (!CanControl(player, screen))
+            {
+                player.Notify(Title, "Seuls le propriétaire du terrain, ses co-propriétaires et le staff peuvent changer la musique.", NotificationManager.Type.Error, 5f);
+                return;
+            }
+
+            if (link != null)
+                Play(player, screen, link);
+            else
+                OpenMenu(player, screen);
+        }
+
+        private void StopAll(Player player)
+        {
+            if (!player.IsAdminService)
+            {
+                player.Notify(Title, "Vous devez être staff et en service admin.", NotificationManager.Type.Error, 5f);
+                return;
+            }
+
+            int count = 0;
+            foreach (WebScreenRP screen in GetAllScreens().Where(IsPlaying))
+            {
+                SetUrl(screen, BlankUrl);
+                count++;
+            }
+            player.Notify(Title, $"{count} écran(s) coupé(s).", NotificationManager.Type.Success, 5f);
         }
 
         // ------------------------------------------------------------------
@@ -374,6 +442,9 @@ namespace SongByLorisStrange
         /// {start} = seconde de départ. Autre format possible : https://www.youtube.com/watch?v={id}&amp;t={start}s
         /// </summary>
         public string YoutubeUrlFormat = "https://www.youtube.com/embed/{id}?autoplay=1&start={start}&loop=1&playlist={id}&rel=0";
+
+        /// <summary>Ids d'items en plus pour la ligne AAMenu > Proximité (écrans et radios sont détectés seuls).</summary>
+        public List<int> ExtraItemIds = new List<int>();
     }
 
     public class SongEntry

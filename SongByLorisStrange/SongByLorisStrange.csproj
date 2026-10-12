@@ -16,7 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <NovaDll Include="Assembly-CSharp;Assembly-CSharp-firstpass;Mirror;UnityEngine.CoreModule;Newtonsoft.Json" />
+    <NovaDll Include="Assembly-CSharp;Assembly-CSharp-firstpass;Mirror;UnityEngine.CoreModule;Newtonsoft.Json;ModKit;AAMenu" />
     <Reference Include="@(NovaDll)">
       <HintPath>$(LibsPath)/%(Identity).dll</HintPath>
       <Private>false</Private>
