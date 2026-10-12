@@ -201,6 +201,8 @@ namespace PNJCreator
                 RotationY = PNJCreator.PlayerRotationY(player),
                 TalkRange = ai.DefaultTalkRange,
                 HearRange = ai.DefaultHearRange,
+                AiEnabled = true,
+                ScriptRules = ScriptRule.Defaults(),
             };
 
             // Base d'apparence : celle du créateur (couleurs de peau, visage…), vêtements adaptés au sexe choisi.
@@ -302,7 +304,7 @@ namespace PNJCreator
                 }, () => NpcMenu(player, id)));
             Line(panel, player, "Apparence", "", Icon("appearance", () => ClothIcon(ClothType.Shirt, npc.Sex)), () => AppearanceMenu(player, id));
             Line(panel, player, "Déplacement / patrouille", npc.Mobile ? $"Mobile ({npc.Waypoints.Count} pts)" : "Statique", Icon("move", () => ClothIcon(ClothType.Shoes, npc.Sex)), () => MovementMenu(player, id));
-            Line(panel, player, "Intelligence artificielle", OnOff(npc.AiEnabled), Icon("ai"), () => NpcAiMenu(player, id));
+            Line(panel, player, "Conversation (/say)", OnOff(npc.AiEnabled), Icon("ai"), () => NpcAiMenu(player, id));
             Line(panel, player, "Faire réapparaître", "", Icon("respawn"), () =>
             {
                 Npcs.Respawn(npc);
@@ -740,14 +742,15 @@ namespace PNJCreator
             if (!Guard(player)) return;
             var npc = Find(player, id);
             if (npc == null) return;
-            var panel = NewTab($"IA — {npc.Name}");
-            Line(panel, player, "IA conversationnelle", OnOff(npc.AiEnabled), Icon("ai"), () =>
+            var panel = NewTab($"Conversation — {npc.Name}");
+            Line(panel, player, "Réponses scriptées (gratuit)", npc.ScriptRules.Count + " règle(s)", Icon("prompt"), () => ScriptRulesMenu(player, id));
+            Line(panel, player, "Parler avec /say", OnOff(npc.AiEnabled), Icon("ai"), () =>
             {
                 npc.AiEnabled = !npc.AiEnabled;
                 Store.SaveConfig();
                 NpcAiMenu(player, id);
             });
-            Line(panel, player, "Personnalité (prompt)", Short(npc.Prompt, 30), Icon("prompt"), () =>
+            Line(panel, player, "Personnalité (IA)", Short(npc.Prompt, 30), Icon("prompt"), () =>
                 AskText(player, "Personnalité",
                     $"Rôle et caractère de {npc.Name}. Exemple : « Tu es le boulanger du centre-ville, bourru mais généreux, tu connais tous les ragots du quartier. »\n\nActuel : {Short(npc.Prompt, 300)}",
                     "Tu es…", value =>
@@ -776,6 +779,115 @@ namespace PNJCreator
         }
 
         // ==================================================================
+        //  Réponses scriptées d'un PNJ
+        // ==================================================================
+
+        void ScriptRulesMenu(Player player, int id)
+        {
+            if (!Guard(player)) return;
+            var npc = Find(player, id);
+            if (npc == null) return;
+            var panel = NewTab($"Réponses scriptées — {npc.Name}");
+            Line(panel, player, "Ajouter une règle", "", Icon("create"), () => AskRuleKeywords(player, id, null));
+            for (int i = 0; i < npc.ScriptRules.Count; i++)
+            {
+                int index = i;
+                var rule = npc.ScriptRules[i];
+                int count = rule.Replies.Split('|').Count(r => r.Trim().Length > 0);
+                Line(panel, player, Short(rule.Keywords, 40), count + " réponse(s)", Icon("prompt"), () => RuleMenu(player, id, index));
+            }
+            Line(panel, player, "Réponses par défaut", Short(npc.FallbackReplies, 25), Icon("prompt"), () =>
+                AskText(player, "Réponses par défaut",
+                    "Quand aucun mot-clé ne correspond. Séparez les réponses par |\n\nActuelles : " + Short(npc.FallbackReplies, 400),
+                    "Pardon ?|Je ne comprends pas.", value =>
+                    {
+                        if (value.Length > 0) { npc.FallbackReplies = value; Store.SaveConfig(); }
+                        ScriptRulesMenu(player, id);
+                    }, () => ScriptRulesMenu(player, id)));
+            Line(panel, player, "Tester une phrase", "", Icon("ai"), () =>
+                AskText(player, "Tester", "Écrivez une phrase de joueur pour voir la réponse du PNJ.", "Bonjour !", value =>
+                {
+                    player.Notify(npc.Name, PNJCreator.ScriptReply(npc, value, player.FullName), NotificationManager.Type.Info, 8f);
+                    ScriptRulesMenu(player, id);
+                }, () => ScriptRulesMenu(player, id)));
+            Line(panel, player, "Remettre les règles par défaut", "", Icon("reload"), () =>
+                Confirm(player, "Réponses scriptées", $"Remplacer les règles de {npc.Name} par les règles par défaut ?", () =>
+                {
+                    npc.ScriptRules = ScriptRule.Defaults();
+                    Store.SaveConfig();
+                    ScriptRulesMenu(player, id);
+                }, () => ScriptRulesMenu(player, id)));
+            Show(player, panel, () => NpcAiMenu(player, id));
+        }
+
+        void RuleMenu(Player player, int id, int index)
+        {
+            var npc = Find(player, id);
+            if (npc == null || index >= npc.ScriptRules.Count) { ScriptRulesMenu(player, id); return; }
+            var rule = npc.ScriptRules[index];
+            var panel = NewTab("Règle : " + Short(rule.Keywords, 30));
+            Line(panel, player, "Mots-clés", Short(rule.Keywords, 30), Icon("prompt"), () => AskRuleKeywords(player, id, index));
+            Line(panel, player, "Réponses", Short(rule.Replies, 30), Icon("prompt"), () => AskRuleReplies(player, id, index));
+            Line(panel, player, "Monter (priorité)", "", Icon("move"), () =>
+            {
+                if (index > 0) { npc.ScriptRules.RemoveAt(index); npc.ScriptRules.Insert(index - 1, rule); Store.SaveConfig(); }
+                ScriptRulesMenu(player, id);
+            });
+            Line(panel, player, "Supprimer la règle", "", Icon("delete"), () =>
+            {
+                npc.ScriptRules.Remove(rule);
+                Store.SaveConfig();
+                ScriptRulesMenu(player, id);
+            });
+            Show(player, panel, () => ScriptRulesMenu(player, id));
+        }
+
+        /// <summary>index null = nouvelle règle (on enchaîne ensuite sur les réponses).</summary>
+        void AskRuleKeywords(Player player, int id, int? index)
+        {
+            var npc = Find(player, id);
+            if (npc == null) return;
+            string current = index.HasValue ? npc.ScriptRules[index.Value].Keywords : "";
+            AskText(player, "Mots-clés",
+                "Mots ou expressions séparés par des virgules. Les accents et majuscules sont ignorés.\nExemple : pain, croissant, baguette" +
+                (current.Length > 0 ? "\n\nActuels : " + current : ""),
+                "pain, croissant, baguette", value =>
+                {
+                    if (value.Replace(",", "").Trim().Length == 0) { ScriptRulesMenu(player, id); return; }
+                    if (index.HasValue)
+                    {
+                        npc.ScriptRules[index.Value].Keywords = value;
+                        Store.SaveConfig();
+                        RuleMenu(player, id, index.Value);
+                        return;
+                    }
+                    npc.ScriptRules.Add(new ScriptRule(value, ""));
+                    AskRuleReplies(player, id, npc.ScriptRules.Count - 1);
+                }, () => ScriptRulesMenu(player, id));
+        }
+
+        void AskRuleReplies(Player player, int id, int index)
+        {
+            var npc = Find(player, id);
+            if (npc == null || index >= npc.ScriptRules.Count) return;
+            var rule = npc.ScriptRules[index];
+            AskText(player, "Réponses",
+                "Ce que le PNJ peut répondre, séparé par | (une au hasard).\n{player} = prénom du joueur, {name} = nom du PNJ.\nExemple : Il me reste deux baguettes.|Les croissants sont à 1 € pièce." +
+                (rule.Replies.Length > 0 ? "\n\nActuelles : " + Short(rule.Replies, 400) : ""),
+                "Réponse 1|Réponse 2", value =>
+                {
+                    if (value.Trim().Length > 0) rule.Replies = value;
+                    if (rule.Replies.Trim().Length == 0) npc.ScriptRules.Remove(rule); // règle incomplète
+                    Store.SaveConfig();
+                    ScriptRulesMenu(player, id);
+                }, () =>
+                {
+                    if (rule.Replies.Trim().Length == 0) { npc.ScriptRules.Remove(rule); Store.SaveConfig(); }
+                    ScriptRulesMenu(player, id);
+                });
+        }
+
+        // ==================================================================
         //  Fournisseurs d'IA
         // ==================================================================
 
@@ -791,12 +903,15 @@ namespace PNJCreator
             if (!Guard(player)) return;
             var ai = Store.Config.Ai;
             var panel = NewTab("Fournisseurs d'IA");
-            Line(panel, player, "Fournisseur actif", ai.ActiveProvider, Icon("provider"), () => ActiveProviderMenu(player));
+            Line(panel, player, "Mode de réponse actif", ai.ActiveProvider, Icon("provider"), () => ActiveProviderMenu(player));
             foreach (string name in AiProviders.All)
             {
                 var p = ai.Providers[name];
                 string n = name;
-                Line(panel, player, name + (name == ai.ActiveProvider ? " (actif)" : ""), (string.IsNullOrEmpty(p.ApiKey) ? "sans clé" : "clé ✔") + " · " + Short(p.Model, 22), Icon("provider"), () => ProviderMenu(player, n));
+                string state = name == AiProviders.Script ? "gratuit, sans IA"
+                    : name == AiProviders.Local ? "gratuit · " + Short(p.Model, 20)
+                    : (string.IsNullOrEmpty(p.ApiKey) ? "sans clé" : "clé ✔") + " · " + Short(p.Model, 20);
+                Line(panel, player, AiProviders.Label(name) + (name == ai.ActiveProvider ? " ✔" : ""), state, Icon("provider"), () => ProviderMenu(player, n));
             }
             Show(player, panel, () => Main(player));
         }
@@ -804,16 +919,16 @@ namespace PNJCreator
         void ActiveProviderMenu(Player player)
         {
             var ai = Store.Config.Ai;
-            var panel = NewTab("Fournisseur actif");
+            var panel = NewTab("Mode de réponse actif");
             foreach (string name in AiProviders.All)
             {
                 string n = name;
-                Line(panel, player, name, name == ai.ActiveProvider ? "✔" : "", Icon("provider"), () =>
+                Line(panel, player, AiProviders.Label(name), name == ai.ActiveProvider ? "✔" : "", Icon("provider"), () =>
                 {
                     ai.ActiveProvider = n;
                     Store.SaveConfig();
-                    if (string.IsNullOrEmpty(ai.Providers[n].ApiKey))
-                        player.Notify(Title, $"{n} est actif mais n'a pas de clé API.", NotificationManager.Type.Warning);
+                    if (AiProviders.IsPaid(n) && string.IsNullOrEmpty(ai.Providers[n].ApiKey))
+                        player.Notify(Title, $"{n} n'a pas de clé API : les PNJ utiliseront les réponses scriptées en attendant.", NotificationManager.Type.Warning, 8f);
                     AiProvidersMenu(player);
                 });
             }
@@ -825,7 +940,11 @@ namespace PNJCreator
             if (!Guard(player)) return;
             var ai = Store.Config.Ai;
             var p = ai.Providers[provider];
-            var panel = NewTab(provider);
+            if (provider == AiProviders.Script) { ScriptProviderInfo(player); return; }
+            var panel = NewTab(AiProviders.Label(provider));
+            if (provider == AiProviders.Local)
+                Line(panel, player, "Comment installer l'IA locale", "", Icon("settings"), () => LocalHelp(player));
+            if (AiProviders.IsPaid(provider))
             Line(panel, player, "Clé API", MaskKey(p.ApiKey), Icon("key"), () =>
                 AskText(player, "Clé API " + provider, $"Collez la clé API {provider}. Elle est enregistrée dans npcs.config.json.", "Clé API", key =>
                 {
@@ -866,7 +985,7 @@ namespace PNJCreator
                     player.Notify(Title, $"Les PNJ utilisent maintenant {provider}.", NotificationManager.Type.Success);
                     ProviderMenu(player, provider);
                 });
-            if (!string.IsNullOrEmpty(p.ApiKey))
+            if (AiProviders.IsPaid(provider) && !string.IsNullOrEmpty(p.ApiKey))
                 Line(panel, player, "Supprimer la clé", "", Icon("delete"), () =>
                     Confirm(player, "Clé API", $"Supprimer la clé {provider} ?", () =>
                     {
@@ -877,10 +996,45 @@ namespace PNJCreator
             Show(player, panel, () => AiProvidersMenu(player));
         }
 
+        void ScriptProviderInfo(Player player)
+        {
+            var ai = Store.Config.Ai;
+            var panel = new UIPanel("Réponses scriptées", UIPanel.PanelType.Text).SetText(
+                "Mode gratuit, sans IA ni clé API.\n\n" +
+                "Chaque PNJ répond selon des mots-clés : si le message du joueur contient un mot-clé, le PNJ dit une des réponses prévues (au hasard). Sinon il dit une réponse « par défaut ».\n\n" +
+                "Les réponses se modifient pour chaque PNJ : fiche du PNJ → Conversation → Réponses scriptées.\n" +
+                "{player} = prénom du joueur, {name} = nom du PNJ.");
+            if (ai.ActiveProvider != AiProviders.Script)
+                panel.AddButton("Utiliser ce mode", ui =>
+                {
+                    player.ClosePanel(ui);
+                    ai.ActiveProvider = AiProviders.Script;
+                    Store.SaveConfig();
+                    player.Notify(Title, "Les PNJ utilisent maintenant les réponses scriptées.", NotificationManager.Type.Success);
+                    AiProvidersMenu(player);
+                });
+            panel.AddButton("Retour", ui => { player.ClosePanel(ui); AiProvidersMenu(player); });
+            player.ShowPanelUI(panel);
+        }
+
+        void LocalHelp(Player player)
+        {
+            Info(player, "IA locale (gratuite)",
+                "L'IA tourne sur la machine du serveur : aucune clé, aucun abonnement.\n\n" +
+                "Ollama (conseillé) :\n" +
+                "1. Installer Ollama depuis ollama.com sur la machine du serveur.\n" +
+                "2. Dans un terminal : ollama pull mistral (bon en français, ~4 Go).\n" +
+                "3. Ici : Adresse de l'API = http://localhost:11434/v1, puis Choisir le modèle.\n\n" +
+                "LM Studio : lancer le serveur local, adresse http://localhost:1234/v1.\n\n" +
+                "Il faut environ 8 Go de RAM libre. Sur une machine sans carte graphique, une réponse peut prendre plusieurs secondes. " +
+                "Si l'IA locale ne répond pas, le PNJ utilise ses réponses scriptées.",
+                () => ProviderMenu(player, AiProviders.Local));
+        }
+
         void FetchModels(Player player, string provider)
         {
             var p = Store.Config.Ai.Providers[provider];
-            if (string.IsNullOrEmpty(p.ApiKey))
+            if (AiProviders.IsPaid(provider) && string.IsNullOrEmpty(p.ApiKey))
             {
                 player.Notify(Title, "Configurez d'abord la clé API.", NotificationManager.Type.Warning);
                 ProviderMenu(player, provider);

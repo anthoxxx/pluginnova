@@ -17,7 +17,8 @@ IA conversationnelle qui discute en RP avec les joueurs.
 1. Compiler (voir plus bas) ou récupérer `PNJCreator.dll`.
 2. Copier `PNJCreator.dll` dans le dossier `Plugins` du serveur.
 3. Démarrer le serveur : le dossier `Plugins/PNJCreator/` et ses fichiers sont créés.
-4. En jeu (admin) : `/Configpnjcreator` → **Fournisseurs d'IA** → coller la clé API.
+4. En jeu (admin) : `/Configpnjcreator`. Par défaut les PNJ répondent avec les **réponses
+   scriptées** (gratuit, rien à configurer). Pour une vraie IA gratuite, voir « IA locale » plus bas.
 
 ## Commandes
 
@@ -78,6 +79,26 @@ cloth_Shirt, cloth_Pants, cloth_Shoes, cloth_Hat, cloth_Accessory, waypoint, spe
 route, prompt, range, memory, provider, key, model, npc, admin, color`. Sans réglage, les
 menus d'apparence utilisent les icônes des vêtements / coupes du jeu.
 
+## Parler aux PNJ sans payer
+
+Modes de réponse (menu **Fournisseurs d'IA → Mode de réponse actif**) :
+
+| Mode | Prix | Ce qu'il faut |
+|---|---|---|
+| **Réponses scriptées** (par défaut) | gratuit | rien : règles « mots-clés → réponses » par PNJ, modifiables en jeu |
+| **IA locale** (Ollama / LM Studio) | gratuit | installer Ollama sur la machine du serveur + un modèle (`ollama pull mistral`) |
+| OpenAI / DeepSeek / Anthropic | payant | une clé API |
+
+- Réponses scriptées : fiche du PNJ → **Conversation** → **Réponses scriptées**. Chaque règle a des
+  mots-clés (séparés par des virgules, accents/majuscules ignorés, reconnus en début de mot) et des
+  réponses séparées par `|` (une au hasard). `{player}` = prénom du joueur, `{name}` = nom du PNJ.
+  Des règles par défaut (bonjour, ça va, ton nom, merci, au revoir…) sont fournies, et
+  « Tester une phrase » montre la réponse sans quitter le menu.
+- IA locale : adresse `http://localhost:11434/v1` (Ollama) ou `http://localhost:1234/v1` (LM Studio),
+  aucune clé. Comptez ~8 Go de RAM libre ; sans carte graphique une réponse peut prendre quelques secondes.
+- Si un fournisseur payant n'a pas de clé, ou si l'IA (locale ou payante) ne répond pas, le PNJ
+  répond automatiquement avec ses réponses scriptées : les joueurs ont toujours une réponse.
+
 ## IA conversationnelle
 
 - Le joueur tape `/say Bonjour !` près d'un PNJ dont l'IA est activée.
@@ -101,8 +122,11 @@ une option bien moins chère pour de simples PNJ d'ambiance.
 - Neutralisation : arrêt des tâches périodiques joueur (`SecondUpdate` / `MinuteUpdate`),
   désactivation des contrôleurs de déplacement / d'entrée côté serveur, rigidbody
   cinématique, santé / faim / soif à 100.
-- Apparence : `CharacterCustomizationSetup` du jeu (SyncVar + `RpcSkinChange`), donc
-  appliquée en direct et visible par les joueurs qui se connectent ensuite.
+- Apparence : `CharacterCustomizationSetup` du jeu (SyncVar + `RpcSkinChange`), appliquée en direct.
+  Elle est renvoyée automatiquement à chaque joueur qui arrive près d'un PNJ ou se connecte
+  (et 5 s / 15 s après chaque apparition de joueur), ce qui garantit l'apparence après un
+  redémarrage. Le flocage (`ClothData`, ignoré par le JSON de Unity) est sauvegardé à part.
+  `/pnjdebug` affiche l'apparence enregistrée et celle portée par le PNJ.
 - Patrouille : le serveur déplace le PNJ et passe `NetworkTransform` / `NetworkAnimator`
   en synchronisation serveur → clients ; les paramètres d'animation `ForwardSpeed` /
   `HorizontalSpeed` sont réglés pendant la marche.

@@ -5,6 +5,7 @@ using System.Reflection;
 using System.Text;
 using Life;
 using Life.CharacterSystem;
+using Life.InventorySystem;
 using Life.Network;
 using Mirror;
 using Newtonsoft.Json.Linq;
@@ -25,6 +26,9 @@ namespace PNJCreator
         public int Direction = 1;
         public float WaitUntil;
         public bool Moving;
+
+        /// <summary>Connexions qui voient déjà ce PNJ (pour leur renvoyer l'apparence à leur arrivée).</summary>
+        public HashSet<int> KnownObservers = new HashSet<int>();
 
         // Animation (NetworkAnimator.animator, via réflexion)
         public object Animator;
@@ -96,6 +100,7 @@ namespace PNJCreator
 
                 CharacterCustomizationSetup skin = SkinOf(data);
                 if (skin != null) SetSyncVar(setup, "NetworkcharacterSkinData", skin);
+                else if (data.Skin != null) Debug.LogWarning($"[PNJCreator] PNJ {data.Id} : apparence enregistrée illisible, modèle par défaut utilisé.");
                 setup.NetworkFullName = data.Name;
                 SetSyncVar(setup, "NetworkHealth", 100);
                 SetSyncVar(setup, "NetworkHunger", 100);
@@ -189,8 +194,16 @@ namespace PNJCreator
 
         public static CharacterCustomizationSetup SkinOf(NpcData data)
         {
-            if (data.Skin == null) return null;
-            try { return CharacterCustomizationSetup.DeserializeFromJson(data.Skin.ToString(Newtonsoft.Json.Formatting.None)); }
+            if (!(data.Skin is JObject obj)) return null;
+            try
+            {
+                var skin = CharacterCustomizationSetup.DeserializeFromJson(obj.ToString(Newtonsoft.Json.Formatting.None));
+                if (skin == null) return null;
+                // ClothData (flocage) n'est pas [Serializable] : JsonUtility l'ignore, on le relit nous-mêmes.
+                skin.tshirtData = ReadCloth(obj["tshirtData"]);
+                skin.pantsData = ReadCloth(obj["pantsData"]);
+                return skin;
+            }
             catch (Exception e)
             {
                 Debug.LogWarning($"[PNJCreator] Apparence illisible pour le PNJ {data.Id} : {e.Message}");
@@ -200,11 +213,34 @@ namespace PNJCreator
 
         public static void StoreSkin(NpcData data, CharacterCustomizationSetup skin)
         {
-            data.Skin = skin == null ? null : JObject.Parse(skin.SerializeToJson());
+            if (skin == null) { data.Skin = null; return; }
+            var obj = JObject.Parse(skin.SerializeToJson());
+            obj["tshirtData"] = WriteCloth(skin.tshirtData);
+            obj["pantsData"] = WriteCloth(skin.pantsData);
+            data.Skin = obj;
         }
 
-        public static CharacterCustomizationSetup CloneSkin(CharacterCustomizationSetup skin) =>
-            skin == null ? null : CharacterCustomizationSetup.DeserializeFromJson(skin.SerializeToJson());
+        public static CharacterCustomizationSetup CloneSkin(CharacterCustomizationSetup skin)
+        {
+            if (skin == null) return null;
+            var clone = CharacterCustomizationSetup.DeserializeFromJson(skin.SerializeToJson());
+            clone.tshirtData = skin.tshirtData;
+            clone.pantsData = skin.pantsData;
+            return clone;
+        }
+
+        static ClothData ReadCloth(JToken t) => new ClothData
+        {
+            clothName = (string)t?["clothName"] ?? "",
+            url = (string)t?["url"] ?? "",
+        };
+
+        static JObject WriteCloth(ClothData d) => new JObject { ["clothName"] = d.clothName ?? "", ["url"] = d.url ?? "" };
+
+        public static string SkinSummary(CharacterCustomizationSetup s) => s == null
+            ? "aucune (apparence par défaut du modèle)"
+            : $"cheveux {s.Hair}, barbe {s.Beard}, haut {s.TShirt}, bas {s.Pants}, chaussures {s.Shoes}, chapeau {s.Hat}, accessoire {s.Accessory}"
+              + (string.IsNullOrEmpty(s.tshirtData.url) ? "" : ", flocage haut") + (string.IsNullOrEmpty(s.pantsData.url) ? "" : ", flocage bas");
 
         /// <summary>Modifie l'apparence, la sauvegarde et l'applique en direct à tous les clients.</summary>
         public void EditSkin(NpcData data, Action<CharacterCustomizationSetup> edit)
@@ -225,6 +261,46 @@ namespace PNJCreator
             SetSyncVar(inst.Setup, "NetworkcharacterSkinData", skin);
             // …et le RPC du jeu applique le changement immédiatement chez les joueurs présents.
             inst.Setup.RpcSkinChange(skin);
+        }
+
+        public void ResyncAllSkins()
+        {
+            foreach (var inst in Instances.Values) ApplySkin(inst.Data);
+        }
+
+        /// <summary>
+        /// Renvoie l'apparence aux joueurs qui viennent de « voir » un PNJ (connexion, arrivée à proximité).
+        /// Le RPC est le chemin qui fonctionne à coup sûr pour les modifications en direct ; on le rejoue donc
+        /// pour chaque nouvel observateur au lieu de compter uniquement sur l'état initial du spawn.
+        /// Retourne les PNJ qui ont de nouveaux observateurs.
+        /// </summary>
+        public List<NpcData> NpcsWithNewObservers()
+        {
+            var result = new List<NpcData>();
+            foreach (var inst in Instances.Values)
+            {
+                if (!inst.Alive) continue;
+                HashSet<int> now = ObserverIds(inst);
+                if (now == null) continue;
+                bool added = now.Any(id => !inst.KnownObservers.Contains(id));
+                inst.KnownObservers = now;
+                if (added) result.Add(inst.Data);
+            }
+            return result;
+        }
+
+        static HashSet<int> ObserverIds(NpcInstance inst)
+        {
+            try
+            {
+                Component identity = inst.Go.GetComponent("NetworkIdentity");
+                if (identity == null) return null;
+                if (!(GetMember(identity, "observers") is System.Collections.IDictionary dict)) return null;
+                var ids = new HashSet<int>();
+                foreach (object key in dict.Keys) if (key is int id) ids.Add(id);
+                return ids;
+            }
+            catch { return null; }
         }
 
         public void ApplyName(NpcData data)
@@ -348,7 +424,9 @@ namespace PNJCreator
                 ? $"Mobile : {d.Waypoints.Count} point(s), cible {inst.WaypointIndex}, vitesse {d.Speed:0.##} m/s, {(inst.Moving ? "en marche" : "à l'arrêt")}"
                 : "Statique");
             sb.AppendLine($"IA : {(d.AiEnabled ? "activée" : "désactivée")}, discussion {d.TalkRange:0.#} m, écoute {d.HearRange:0.#} m");
-            sb.AppendLine($"Animator : {(inst.Animator != null ? "trouvé" : "absent")}");
+            sb.AppendLine($"Animator : {(inst.Animator != null ? "trouvé" : "absent")}, observateurs : {inst.KnownObservers.Count}");
+            sb.AppendLine("Apparence enregistrée : " + SkinSummary(SkinOf(d)));
+            sb.AppendLine("Apparence sur le PNJ : " + SkinSummary(inst.Setup.characterSkinData));
             foreach (var comp in inst.Go.GetComponents<Component>())
             {
                 if (comp == null) continue;

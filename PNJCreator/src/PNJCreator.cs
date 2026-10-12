@@ -16,7 +16,7 @@ namespace PNJCreator
     public class PNJCreator : Plugin
     {
         public const string DisplayName = "PNJ by Loris Strange";
-        public const string Version = "1.0.0";
+        public const string Version = "1.1.0";
         public const string Credit = "Créé par Loris Strange";
 
         public DataStore Store;
@@ -76,6 +76,14 @@ namespace PNJCreator
                 })).Register();
 
             Debug.Log($"[PNJCreator] {DisplayName} v{Version} — {Credit} — chargé ({Store.Config.Npcs.Count} PNJ, IA : {Store.Config.Ai.ActiveProvider}).");
+        }
+
+        public override void OnPlayerSpawnCharacter(Player player, Mirror.NetworkConnection conn, Life.DB.Characters character)
+        {
+            base.OnPlayerSpawnCharacter(player, conn, character);
+            // Filet de sécurité : renvoie l'apparence des PNJ une fois le joueur chargé.
+            Runner?.RunAfter(5f, () => Npcs.ResyncAllSkins());
+            Runner?.RunAfter(15f, () => Npcs.ResyncAllSkins());
         }
 
         // ------------------------------------------------------------------
@@ -144,11 +152,8 @@ namespace PNJCreator
             // Copie : la requête tourne en arrière-plan pendant qu'un admin peut modifier la config.
             ProviderSettings live = ai.Providers[provider];
             var settings = new ProviderSettings { ApiKey = live.ApiKey, Model = live.Model, BaseUrl = live.BaseUrl };
-            if (string.IsNullOrEmpty(settings.ApiKey))
-            {
-                player.Notify(DisplayName, $"Aucune clé API {provider} configurée.", NotificationManager.Type.Error);
-                return;
-            }
+            // Fournisseur payant sans clé : on reste gratuit avec les réponses scriptées.
+            if (AiProviders.IsPaid(provider) && string.IsNullOrEmpty(settings.ApiKey)) provider = AiProviders.Script;
 
             string key = PlayerKey(player);
             if (pendingSay.Contains(key))
@@ -167,23 +172,32 @@ namespace PNJCreator
             string playerName = player.FullName;
             Nova.server.SendLocalText($"<color=#a4bbff>{playerName}</color> → <color={Store.Config.General.NameColor}>{npc.Name}</color> : {message}", npc.HearRange, pos);
 
+            if (provider == AiProviders.Script)
+            {
+                string scripted = ScriptReply(npc, message, playerName);
+                // Petit délai pour que la réponse arrive après la phrase du joueur, comme une vraie réplique.
+                Runner.RunAfter(0.8f, () => SayAsNpc(npc, scripted));
+                return;
+            }
+
             string userText = $"{playerName} te dit : {message}";
             var history = Store.GetHistory(npc.Id, key).Select(m => new ChatMessage(m.Role, m.Content)).ToList();
             history.Add(new ChatMessage("user", userText));
             string system = BuildSystemPrompt(npc);
 
             pendingSay.Add(key);
+            string usedProvider = provider;
             AiClient.ChatAsync(provider, settings, system, history, ai.MaxOutputTokens, ai.RequestTimeoutSeconds)
                 .ContinueWith(task =>
                 {
                     AiResult result = task.Exception != null
                         ? new AiResult { Error = task.Exception.GetBaseException().Message }
                         : task.Result;
-                    Runner.RunOnMainThread(() => OnAiReply(player, key, npc, provider, userText, result));
+                    Runner.RunOnMainThread(() => OnAiReply(player, key, npc, usedProvider, userText, message, result));
                 });
         }
 
-        void OnAiReply(Player player, string key, NpcData npc, string provider, string userText, AiResult result)
+        void OnAiReply(Player player, string key, NpcData npc, string provider, string userText, string message, AiResult result)
         {
             pendingSay.Remove(key);
             if (result.InputTokens > 0 || result.OutputTokens > 0) Store.AddUsage(npc, provider, result.InputTokens, result.OutputTokens);
@@ -192,7 +206,10 @@ namespace PNJCreator
             if (!result.Success)
             {
                 Debug.LogWarning($"[PNJCreator] IA ({provider}) pour le PNJ {npc.Id} : {result.Error}");
-                if (online) player.Notify(DisplayName, $"{npc.Name} ne répond pas ({result.Error}).", NotificationManager.Type.Error, 8f);
+                // Le PNJ répond quand même (réponse scriptée) ; seul le staff voit l'erreur.
+                if (online && CanEdit(player))
+                    player.Notify(DisplayName, $"IA {provider} indisponible ({result.Error}). Réponse scriptée utilisée.", NotificationManager.Type.Warning, 8f);
+                SayAsNpc(npc, ScriptReply(npc, message, online ? player.FullName : ""));
                 return;
             }
 
@@ -200,8 +217,52 @@ namespace PNJCreator
             if (reply.Length == 0) return;
             Store.AppendExchange(npc.Id, key, userText, reply);
 
+            SayAsNpc(npc, reply);
+        }
+
+        void SayAsNpc(NpcData npc, string reply)
+        {
+            if (string.IsNullOrWhiteSpace(reply)) return;
             Vector3 at = Npcs.Instances.TryGetValue(npc.Id, out var inst) ? inst.Position : npc.Position;
             Nova.server.SendLocalText($"<color={Store.Config.General.NameColor}>{npc.Name}</color> : {reply}", npc.HearRange, at);
+        }
+
+        // ------------------------------------------------------------------
+        //  Réponses scriptées (gratuit, sans IA)
+        // ------------------------------------------------------------------
+
+        static readonly System.Random random = new System.Random();
+
+        public static string Simplify(string text)
+        {
+            string d = (text ?? "").ToLowerInvariant().Replace('’', '\'').Normalize(System.Text.NormalizationForm.FormD);
+            var sb = new System.Text.StringBuilder(d.Length);
+            foreach (char c in d)
+            {
+                if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) == System.Globalization.UnicodeCategory.NonSpacingMark) continue;
+                // Ponctuation → espace, pour comparer mot à mot.
+                sb.Append(char.IsLetterOrDigit(c) || c == '\'' || c == '-' ? c : ' ');
+            }
+            return string.Join(" ", sb.ToString().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries));
+        }
+
+        public static string ScriptReply(NpcData npc, string message, string playerName)
+        {
+            string msg = " " + Simplify(message) + " ";
+            string replies = npc.FallbackReplies;
+            foreach (var rule in npc.ScriptRules ?? new List<ScriptRule>())
+            {
+                bool match = rule.Keywords.Split(',')
+                    .Select(k => Simplify(k).Trim())
+                    // Mot-clé en début de mot : « pain » trouve « pains » mais « yo » ne trouve pas « voyons ».
+                    .Any(k => k.Length > 0 && msg.Contains(" " + k));
+                if (match) { replies = rule.Replies; break; }
+            }
+            var options = (replies ?? "").Split('|').Select(r => r.Trim()).Where(r => r.Length > 0).ToArray();
+            if (options.Length == 0) return "";
+            string pick = options[random.Next(options.Length)];
+            string first = (playerName ?? "").Split(' ').FirstOrDefault(p => p.Length > 0) ?? "";
+            return pick.Replace("{player}", first).Replace("{name}", npc.Name).Replace("  ", " ").Trim();
         }
 
         string BuildSystemPrompt(NpcData npc)

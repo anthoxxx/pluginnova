@@ -40,13 +40,14 @@ namespace PNJCreator
             {
                 try
                 {
-                    return provider == AiProviders.Anthropic
-                        ? ChatAnthropic(settings, system, history, maxTokens, timeoutSeconds)
-                        : ChatOpenAiCompatible(provider, settings, system, history, maxTokens, timeoutSeconds);
+                    if (provider == AiProviders.Anthropic) return ChatAnthropic(settings, system, history, maxTokens, timeoutSeconds);
+                    // Un modèle local sur CPU peut mettre du temps à répondre (surtout au premier chargement).
+                    int timeout = provider == AiProviders.Local ? Math.Max(timeoutSeconds, 120) : timeoutSeconds;
+                    return ChatOpenAiCompatible(provider, settings, system, history, maxTokens, timeout);
                 }
                 catch (Exception e)
                 {
-                    return new AiResult { Error = e.Message };
+                    return new AiResult { Error = provider == AiProviders.Local ? LocalHint(e.Message) : e.Message };
                 }
             });
         }
@@ -82,10 +83,15 @@ namespace PNJCreator
                 }
                 catch (Exception e)
                 {
-                    return (new List<string>(), e.Message);
+                    return (new List<string>(), provider == AiProviders.Local ? LocalHint(e.Message) : e.Message);
                 }
             });
         }
+
+        static string LocalHint(string error) =>
+            error.Contains("HTTP 404")
+                ? error + " — modèle introuvable : téléchargez-le (ex. « ollama pull mistral ») ou choisissez-en un dans la liste."
+                : error + " — l'IA locale est-elle lancée ? (Ollama : http://localhost:11434, LM Studio : http://localhost:1234/v1)";
 
         static bool IsOpenAiChatModel(string id)
         {
@@ -104,7 +110,7 @@ namespace PNJCreator
             foreach (var m in history) messages.Add(new JObject { ["role"] = m.Role, ["content"] = m.Content });
 
             var body = new JObject { ["model"] = s.Model, ["messages"] = messages };
-            // Les modèles OpenAI récents refusent "max_tokens" ; DeepSeek utilise encore "max_tokens".
+            // Les modèles OpenAI récents refusent "max_tokens" ; DeepSeek, Ollama et LM Studio utilisent "max_tokens".
             body[provider == AiProviders.OpenAI ? "max_completion_tokens" : "max_tokens"] = maxTokens;
 
             var json = JObject.Parse(Http("POST", s.BaseUrl + "/chat/completions", BearerHeaders(s), body.ToString(Formatting.None), timeout));
@@ -196,8 +202,11 @@ namespace PNJCreator
             return h;
         }
 
+        /// <summary>L'IA locale n'a pas besoin de clé : l'en-tête n'est envoyé que s'il y en a une.</summary>
         static Dictionary<string, string> BearerHeaders(ProviderSettings s) =>
-            new Dictionary<string, string> { ["Authorization"] = "Bearer " + s.ApiKey };
+            string.IsNullOrEmpty(s.ApiKey)
+                ? new Dictionary<string, string>()
+                : new Dictionary<string, string> { ["Authorization"] = "Bearer " + s.ApiKey };
 
         // ---------------- HTTP ----------------
 

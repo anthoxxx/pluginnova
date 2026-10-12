@@ -43,8 +43,8 @@ namespace PNJCreator
 
     public class AiSettings
     {
-        /// <summary>OpenAI, DeepSeek ou Anthropic.</summary>
-        public string ActiveProvider = AiProviders.OpenAI;
+        /// <summary>Script (gratuit, sans IA), Local (Ollama / LM Studio, gratuit), OpenAI, DeepSeek ou Anthropic.</summary>
+        public string ActiveProvider = AiProviders.Script;
         public Dictionary<string, ProviderSettings> Providers = new Dictionary<string, ProviderSettings>();
         /// <summary>Instructions communes à tous les PNJ ({name} = nom du PNJ).</summary>
         public string GlobalPrompt =
@@ -71,17 +71,37 @@ namespace PNJCreator
 
     public static class AiProviders
     {
+        /// <summary>Réponses par mots-clés écrites par le staff : gratuit, rien à installer.</summary>
+        public const string Script = "Script";
+        /// <summary>IA installée sur la machine (Ollama, LM Studio…) : gratuit, aucune clé.</summary>
+        public const string Local = "Local";
         public const string OpenAI = "OpenAI";
         public const string DeepSeek = "DeepSeek";
         public const string Anthropic = "Anthropic";
-        public static readonly string[] All = { OpenAI, DeepSeek, Anthropic };
+        public static readonly string[] All = { Script, Local, OpenAI, DeepSeek, Anthropic };
+        /// <summary>Fournisseurs qui passent par une API HTTP (tous sauf Script).</summary>
+        public static readonly string[] Http = { Local, OpenAI, DeepSeek, Anthropic };
+
+        public static bool IsPaid(string provider) => provider == OpenAI || provider == DeepSeek || provider == Anthropic;
+
+        public static string Label(string provider)
+        {
+            switch (provider)
+            {
+                case Script: return "Réponses scriptées (gratuit)";
+                case Local: return "IA locale Ollama / LM Studio (gratuit)";
+                default: return provider + " (payant, clé API)";
+            }
+        }
 
         public static string DefaultModel(string provider)
         {
             switch (provider)
             {
+                case Local: return "mistral";
                 case DeepSeek: return "deepseek-chat";
                 case Anthropic: return "claude-opus-5-5";
+                case Script: return "";
                 default: return "gpt-4o-mini";
             }
         }
@@ -90,11 +110,43 @@ namespace PNJCreator
         {
             switch (provider)
             {
+                case Local: return "http://localhost:11434/v1";
                 case DeepSeek: return "https://api.deepseek.com";
                 case Anthropic: return "https://api.anthropic.com";
+                case Script: return "";
                 default: return "https://api.openai.com/v1";
             }
         }
+    }
+
+    /// <summary>Réponse scriptée : si le message du joueur contient un des mots-clés, le PNJ répond une des réponses.</summary>
+    public class ScriptRule
+    {
+        /// <summary>Mots-clés séparés par des virgules (accents et majuscules ignorés).</summary>
+        public string Keywords = "";
+        /// <summary>Réponses possibles séparées par « | ». {player} = nom du joueur, {name} = nom du PNJ.</summary>
+        public string Replies = "";
+
+        public ScriptRule() { }
+        public ScriptRule(string keywords, string replies) { Keywords = keywords; Replies = replies; }
+
+        public static List<ScriptRule> Defaults() => new List<ScriptRule>
+        {
+            new ScriptRule("bonjour, salut, coucou, bonsoir, hello, wesh, yo",
+                "Bonjour {player} !|Salut {player}, ça va ?|Bonjour ! Je peux vous aider ?"),
+            new ScriptRule("ca va, comment vas, comment allez, la forme, quoi de neuf",
+                "Ça va bien, merci ! Et vous ?|Tranquille, la journée se passe bien.|On fait aller, et vous ?"),
+            new ScriptRule("ton nom, votre nom, qui es-tu, qui etes, t'appelles, vous appelez, t'es qui",
+                "Je m'appelle {name}.|Moi c'est {name}, enchanté.|{name}, pour vous servir."),
+            new ScriptRule("tu fais quoi, vous faites quoi, ton travail, votre travail, ton metier, votre metier",
+                "Je fais mon travail, comme tous les jours.|Je m'occupe de mes affaires ici."),
+            new ScriptRule("merci",
+                "Avec plaisir !|De rien, {player}.|Je vous en prie."),
+            new ScriptRule("au revoir, a plus, bye, a bientot, bonne journee, bonne soiree, ciao, salut a toi",
+                "Au revoir {player} !|À la prochaine !|Bonne journée à vous."),
+            new ScriptRule("aide, aider, perdu, ou est, ou se trouve, c'est ou",
+                "Désolé, je ne connais pas bien le coin. Demandez à la mairie.|Je ne saurais pas vous dire, désolé."),
+        };
     }
 
     public class Waypoint
@@ -126,6 +178,10 @@ namespace PNJCreator
         // IA
         public bool AiEnabled;
         public string Prompt = "Tu es un habitant sympathique de la ville.";
+        /// <summary>Réponses du mode « Script » (gratuit, sans IA).</summary>
+        public List<ScriptRule> ScriptRules;
+        /// <summary>Réponses quand aucun mot-clé ne correspond, séparées par « | ».</summary>
+        public string FallbackReplies = "Hmm… je ne suis pas sûr de comprendre.|Pardon ?|Je n'ai pas d'avis là-dessus, désolé.";
         public float TalkRange = 4f;
         public float HearRange = 12f;
 
@@ -273,13 +329,14 @@ namespace PNJCreator
                 if (found.ApiKey == null) found.ApiKey = "";
                 found.ApiKey = found.ApiKey.Trim();
                 if (string.IsNullOrWhiteSpace(found.Model)) found.Model = AiProviders.DefaultModel(name);
-                found.Model = found.Model.Trim();
-                if (string.IsNullOrWhiteSpace(found.BaseUrl) || !found.BaseUrl.StartsWith("http")) found.BaseUrl = AiProviders.DefaultBaseUrl(name);
+                found.Model = (found.Model ?? "").Trim();
+                if (name != AiProviders.Script && (string.IsNullOrWhiteSpace(found.BaseUrl) || !found.BaseUrl.StartsWith("http"))) found.BaseUrl = AiProviders.DefaultBaseUrl(name);
+                if (found.BaseUrl == null) found.BaseUrl = "";
                 found.BaseUrl = found.BaseUrl.Trim().TrimEnd('/');
                 fixedProviders[name] = found;
             }
             ai.Providers = fixedProviders;
-            ai.ActiveProvider = AiProviders.All.FirstOrDefault(p => string.Equals(p, ai.ActiveProvider, StringComparison.OrdinalIgnoreCase)) ?? AiProviders.OpenAI;
+            ai.ActiveProvider = AiProviders.All.FirstOrDefault(p => string.Equals(p, ai.ActiveProvider, StringComparison.OrdinalIgnoreCase)) ?? AiProviders.Script;
             if (string.IsNullOrWhiteSpace(ai.GlobalPrompt)) ai.GlobalPrompt = new AiSettings().GlobalPrompt;
             ai.DefaultTalkRange = Clamp(ai.DefaultTalkRange, 1f, 50f, 4f);
             ai.DefaultHearRange = Clamp(ai.DefaultHearRange, 1f, 100f, 12f);
@@ -306,6 +363,9 @@ namespace PNJCreator
                 n.Speed = Clamp(n.Speed, 0.3f, 8f, 1.4f);
                 n.WaitSeconds = Clamp(n.WaitSeconds, 0f, 600f, 3f);
                 if (n.Prompt == null) n.Prompt = "";
+                if (n.ScriptRules == null) n.ScriptRules = ScriptRule.Defaults();
+                n.ScriptRules.RemoveAll(r => r == null || string.IsNullOrWhiteSpace(r.Keywords) || string.IsNullOrWhiteSpace(r.Replies));
+                if (string.IsNullOrWhiteSpace(n.FallbackReplies)) n.FallbackReplies = new NpcData().FallbackReplies;
                 n.TalkRange = Clamp(n.TalkRange, 1f, 50f, ai.DefaultTalkRange);
                 n.HearRange = Clamp(n.HearRange, 1f, 100f, ai.DefaultHearRange);
                 if (n.Skin != null && n.Skin.Type != JTokenType.Object) n.Skin = null;
