@@ -194,7 +194,60 @@ namespace Boulangerie
             return item != null ? item.itemName : $"Item #{itemId} (introuvable)";
         }
 
-        public static int Icon(int itemId) => itemId > 0 ? ItemUtils.GetIconIdByItemId(itemId) : IconUtils.Others.None.Id;
+        public static int Icon(int itemId) => itemId > 0 ? ItemUtils.GetIconIdByItemId(itemId) : DefaultIcon;
+
+        /// <summary>Icône des lignes sans icône propre (réglable dans la configuration).</summary>
+        public static int DefaultIcon => Config.DefaultIconId ?? IconUtils.Others.None.Id;
+
+        /// <summary>Icône d'un produit : la sienne, sinon celle de son item, sinon l'icône par défaut.</summary>
+        public static int ProductIcon(BakeryProduct product) => product.IconId ?? Icon(product.ItemId);
+
+        /// <summary>Icône d'une formule : la sienne, sinon celle des formules, sinon l'icône par défaut.</summary>
+        public static int FormulaIcon(BakeryFormula formula) => formula.IconId ?? Config.FormulaIconId ?? DefaultIcon;
+
+        /// <summary>Nombre d'icônes disponibles dans le jeu.</summary>
+        public static int IconCount => Nova.man?.newIcons?.Count ?? 0;
+
+        /// <summary>Texte « n°X » ou « Auto » pour un réglage d'icône.</summary>
+        public static string IconLabel(int? iconId, string auto = "Auto") => iconId.HasValue ? $"n°{iconId.Value}" : auto;
+
+        private const int IconsPerPage = 30;
+
+        /// <summary>
+        /// Galerie des icônes du jeu (30 par page). <paramref name="onChosen"/> enregistre l'icône
+        /// choisie (null = icône automatique) ; on revient ensuite au panel d'avant la galerie.
+        /// Toutes les pages et la saisie du numéro ont le même titre : un seul « Retour ».
+        /// </summary>
+        public void IconPicker(Player player, string title, string autoLabel, int page, Func<int?, Task> onChosen)
+        {
+            int count = IconCount;
+            int pages = Math.Max(1, (count + IconsPerPage - 1) / IconsPerPage);
+            page = Math.Max(0, Math.Min(page, pages - 1));
+
+            Panel panel = PanelHelper.Create(Brand(title), UIPanel.PanelType.TabPrice, player, () => IconPicker(player, title, autoLabel, page, onChosen));
+            panel.AddTabLine(Color($"Page {page + 1}/{pages} - {count} icônes du jeu", Colors.Grey), "", DefaultIcon, _ => panel.Refresh());
+            if (autoLabel != null)
+                panel.AddTabLine(Color(autoLabel, Colors.Info), "", IconUtils.Others.None.Id, async _ => { await onChosen(null); panel.Previous(); });
+            panel.AddTabLine(Color("Saisir un numéro d'icône...", Colors.Info), "", IconUtils.Others.None.Id, _ =>
+            {
+                player.ClosePanel(panel);
+                AskInt(player, title, $"Numéro de l'icône (0 à {Math.Max(0, count - 1)})", 0, 0, Math.Max(0, count - 1), async v => await onChosen(v));
+            });
+            for (int id = page * IconsPerPage; id < Math.Min(count, (page + 1) * IconsPerPage); id++)
+            {
+                int icon = id;
+                panel.AddTabLine($"Icône n°{icon}", "", icon, async _ => { await onChosen(icon); panel.Previous(); });
+            }
+
+            panel.AddButton("Choisir", _ => panel.SelectTab());
+            if (page + 1 < pages)
+                panel.AddButton("Page suivante", _ => { player.ClosePanel(panel); IconPicker(player, title, autoLabel, page + 1, onChosen); });
+            if (page > 0)
+                panel.AddButton("Page précédente", _ => { player.ClosePanel(panel); IconPicker(player, title, autoLabel, page - 1, onChosen); });
+            panel.PreviousButton();
+            panel.CloseButton();
+            panel.Display();
+        }
 
         public static string OnOff(bool value) => value ? Color("Oui", Colors.Success) : Color("Non", Colors.Error);
 
@@ -321,7 +374,7 @@ namespace Boulangerie
             BakeryConfig c = Config;
             const string edit = "Boulangerie - Réglage";
             Panel panel = PanelHelper.Create(BoulangeriePlugin.Brand("Boulangerie - Configuration"), UIPanel.PanelType.TabPrice, player, () => ConfigPanel(player));
-            int none = IconUtils.Others.None.Id;
+            int none = DefaultIcon;
 
             panel.AddTabLine("Webhook Discord (URL)", string.IsNullOrWhiteSpace(c.WebhookUrl) ? Color("Non défini", Colors.Error) : Color("Défini", Colors.Success), none, _ =>
                 AskInput(player, edit, "URL du webhook Discord (laisser vide pour retirer)", c.WebhookUrl, async input =>
@@ -374,6 +427,10 @@ namespace Boulangerie
             panel.AddTabLine("Donner les items au client", OnOff(c.GiveItems), none, async _ => { c.GiveItems = !c.GiveItems; await c.Save(); panel.Refresh(); });
             panel.AddTabLine("Prendre les items dans l'inventaire du boulanger", OnOff(c.UseCashierStock), none, async _ => { c.UseCashierStock = !c.UseCashierStock; await c.Save(); panel.Refresh(); });
             panel.AddTabLine("Les employés peuvent modifier la carte", OnOff(c.EmployeesCanEditMenu), none, async _ => { c.EmployeesCanEditMenu = !c.EmployeesCanEditMenu; await c.Save(); panel.Refresh(); });
+            panel.AddTabLine("Icône par défaut des panels", IconLabel(c.DefaultIconId, "Vide"), DefaultIcon, _ =>
+                IconPicker(player, "Boulangerie - Icône par défaut", "Aucune icône (vide)", 0, async icon => { c.DefaultIconId = icon; await c.Save(); }));
+            panel.AddTabLine("Icône des formules", IconLabel(c.FormulaIconId, "Par défaut"), c.FormulaIconId ?? DefaultIcon, _ =>
+                IconPicker(player, "Boulangerie - Icône des formules", "Utiliser l'icône par défaut", 0, async icon => { c.FormulaIconId = icon; await c.Save(); }));
             panel.AddTabLine(Color("Gérer la carte d'une boulangerie", Colors.Info), "", none, async _ =>
             {
                 List<int> bizIds = (await CashRegister.QueryAll()).Select(r => r.BizId).Distinct().ToList();

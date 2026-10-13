@@ -56,12 +56,12 @@ namespace Boulangerie
 
             Panel panel = PanelHelper.Create(BoulangeriePlugin.Brand("Boulangerie - Produits"), UIPanel.PanelType.TabPrice, player, () => ProductsList(player, bizId));
             if (products.Count == 0)
-                panel.AddTabLine("Aucun produit : cliquez sur « Ajouter »", "", IconUtils.Others.None.Id, _ => panel.Refresh());
+                panel.AddTabLine("Aucun produit : cliquez sur « Ajouter »", "", DefaultIcon, _ => panel.Refresh());
             foreach (BakeryProduct product in products)
             {
                 BakeryProduct p = product;
                 panel.AddTabLine(p.Name + "<br>" + Size(StockHelper.Label(p) + Color(" - Item : " + ItemName(p.ItemId), Colors.Grey), 14),
-                    Money(p.Price), Icon(p.ItemId), _ => ProductEdit(player, p));
+                    Money(p.Price), ProductIcon(p), _ => ProductEdit(player, p));
             }
 
             if (products.Count > 0)
@@ -135,9 +135,9 @@ namespace Boulangerie
             Dictionary<int, int> inventory = InventoryUtils.ReturnPlayerInventory(player);
 
             Panel panel = PanelHelper.Create(BoulangeriePlugin.Brand(title), UIPanel.PanelType.TabPrice, player, () => ChooseItem(player, title, text, onChosen));
-            panel.AddTabLine(Color(text, Colors.Grey), "", IconUtils.Others.None.Id, _ => { });
-            panel.AddTabLine("Aucun item (prestation simple)", "", IconUtils.Others.None.Id, async _ => await onChosen(panel, 0));
-            panel.AddTabLine(Color("Saisir l'ID d'un item...", Colors.Info), "", IconUtils.Others.None.Id, _ =>
+            panel.AddTabLine(Color(text, Colors.Grey), "", DefaultIcon, _ => { });
+            panel.AddTabLine("Aucun item (prestation simple)", "", DefaultIcon, async _ => await onChosen(panel, 0));
+            panel.AddTabLine(Color("Saisir l'ID d'un item...", Colors.Info), "", DefaultIcon, _ =>
             {
                 player.ClosePanel(panel);
                 ItemIdInput(player, title, onChosen);
@@ -179,7 +179,7 @@ namespace Boulangerie
 
         private void ProductEdit(Player player, BakeryProduct product)
         {
-            int none = IconUtils.Others.None.Id;
+            int none = DefaultIcon;
             Panel panel = PanelHelper.Create(BoulangeriePlugin.Brand("Boulangerie - Produit"), UIPanel.PanelType.TabPrice, player, () => ProductEdit(player, product));
 
             panel.AddTabLine("Nom", product.Name, none, _ =>
@@ -206,6 +206,12 @@ namespace Boulangerie
                     product.ItemId = itemId;
                     await product.Save();
                     current.Previous();
+                }));
+            panel.AddTabLine("Icône sur les panels", IconLabel(product.IconId, "Auto (icône de l'item)"), ProductIcon(product), _ =>
+                IconPicker(player, "Boulangerie - Icône du produit", "Auto (icône de l'item lié)", 0, async icon =>
+                {
+                    product.IconId = icon;
+                    await product.Save();
                 }));
             panel.AddTabLine("En vente", OnOff(product.Available), none, async _ =>
             {
@@ -264,12 +270,12 @@ namespace Boulangerie
 
             Panel panel = PanelHelper.Create(BoulangeriePlugin.Brand("Boulangerie - Stock"), UIPanel.PanelType.TabPrice, player, () => StockPanel(player, bizId));
             if (products.Count == 0)
-                panel.AddTabLine("Aucun produit", "", IconUtils.Others.None.Id, _ => panel.Refresh());
+                panel.AddTabLine("Aucun produit", "", DefaultIcon, _ => panel.Refresh());
             foreach (BakeryProduct product in products)
             {
                 BakeryProduct p = product;
                 string qty = p.TrackStock ? $"x{p.Stock}" : Color("illimité", Colors.Grey);
-                panel.AddTabLine(p.Name + "<br>" + Size(StockHelper.Label(p), 14), qty, Icon(p.ItemId), async _ =>
+                panel.AddTabLine(p.Name + "<br>" + Size(StockHelper.Label(p), 14), qty, ProductIcon(p), async _ =>
                 {
                     switch (action)
                     {
@@ -324,13 +330,13 @@ namespace Boulangerie
 
             Panel panel = PanelHelper.Create(BoulangeriePlugin.Brand("Boulangerie - Formules"), UIPanel.PanelType.TabPrice, player, () => FormulasList(player, bizId));
             if (formulas.Count == 0)
-                panel.AddTabLine("Aucune formule : cliquez sur « Ajouter »", "", IconUtils.Others.None.Id, _ => panel.Refresh());
+                panel.AddTabLine("Aucune formule : cliquez sur « Ajouter »", "", DefaultIcon, _ => panel.Refresh());
             foreach (BakeryFormula formula in formulas)
             {
                 BakeryFormula f = formula;
                 string state = f.Available ? "" : Color(" (indisponible)", Colors.Error);
                 panel.AddTabLine(f.Name + state + "<br>" + Size(Color(CashRegister.DescribeFormula(f, names), Colors.Grey), 14),
-                    Money(f.Price), IconUtils.Others.None.Id, _ => FormulaEdit(player, f));
+                    Money(f.Price), FormulaIcon(f), _ => FormulaEdit(player, f));
             }
 
             if (formulas.Count > 0)
@@ -399,16 +405,16 @@ namespace Boulangerie
             Panel panel = PanelHelper.Create(BoulangeriePlugin.Brand(title), UIPanel.PanelType.TabPrice, player, () => FormulaContent(player, formula, title, creating));
             string header = creating ? "Étape 3/3 : contenu de la formule" : "Contenu de la formule";
             panel.AddTabLine(Color($"{header} « {formula.Name} »", Colors.Grey) + "<br>" +
-                Size($"Prix formule {Money(formula.Price)} - à l'unité {Money(separate)}", 14), "", IconUtils.Others.None.Id, _ => panel.Refresh());
+                Size($"Prix formule {Money(formula.Price)} - à l'unité {Money(separate)}", 14), "", DefaultIcon, _ => panel.Refresh());
 
             if (products.Count == 0)
-                panel.AddTabLine(Color("Créez d'abord des produits", Colors.Error), "", IconUtils.Others.None.Id, _ => panel.Refresh());
+                panel.AddTabLine(Color("Créez d'abord des produits", Colors.Error), "", DefaultIcon, _ => panel.Refresh());
 
             foreach (BakeryProduct product in products)
             {
                 BakeryProduct p = product;
                 string qty = items.TryGetValue(p.Id, out int q) ? Color($"x{q}", Colors.Success) : "-";
-                panel.AddTabLine(p.Name, qty, Icon(p.ItemId), async _ =>
+                panel.AddTabLine(p.Name, qty, ProductIcon(p), async _ =>
                 {
                     Dictionary<int, int> content = formula.Items;
                     int current = content.TryGetValue(p.Id, out int c) ? c : 0;
@@ -454,7 +460,7 @@ namespace Boulangerie
 
         private async void FormulaEdit(Player player, BakeryFormula formula)
         {
-            int none = IconUtils.Others.None.Id;
+            int none = DefaultIcon;
             int bizId = formula.BizId;
             Dictionary<int, string> names = (await BakeryProduct.Query(p => p.BizId == bizId)).ToDictionary(p => p.Id, p => p.Name);
 
@@ -480,6 +486,12 @@ namespace Boulangerie
                 }));
             panel.AddTabLine("Contenu<br>" + Size(Color(CashRegister.DescribeFormula(formula, names), Colors.Grey), 14), "", none, _ =>
                 FormulaContent(player, formula, "Boulangerie - Contenu formule", false));
+            panel.AddTabLine("Icône sur les panels", IconLabel(formula.IconId, "Par défaut"), FormulaIcon(formula), _ =>
+                IconPicker(player, "Boulangerie - Icône de la formule", "Icône par défaut des formules", 0, async icon =>
+                {
+                    formula.IconId = icon;
+                    await formula.Save();
+                }));
             panel.AddTabLine("En vente", OnOff(formula.Available), none, async _ =>
             {
                 formula.Available = !formula.Available;
@@ -562,12 +574,12 @@ namespace Boulangerie
 
             Panel panel = PanelHelper.Create(BoulangeriePlugin.Brand("Boulangerie - Historique"), UIPanel.PanelType.TabPrice, player, () => History(player, bizId));
             if (sales.Count == 0)
-                panel.AddTabLine("Aucune vente pour le moment", "", IconUtils.Others.None.Id, _ => panel.Refresh());
+                panel.AddTabLine("Aucune vente pour le moment", "", DefaultIcon, _ => panel.Refresh());
             foreach (BakerySale sale in sales)
             {
                 BakerySale s = sale;
                 panel.AddTabLine($"#{s.Id} {FormatDate(s.Date)} - {s.ClientName}<br>" + Size(Color($"par {s.CashierName} - {s.PaymentMethod}", Colors.Grey), 14),
-                    Money(s.Total), IconUtils.Others.None.Id, _ => SaleDetail(player, s));
+                    Money(s.Total), DefaultIcon, _ => SaleDetail(player, s));
             }
             if (sales.Count > 0)
                 panel.NextButton("Voir le ticket", () => panel.SelectTab());

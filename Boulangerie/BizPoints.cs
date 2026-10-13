@@ -274,7 +274,7 @@ namespace Boulangerie
         {
             var (products, formulas) = await StockHelper.Load(bizId);
             Dictionary<int, string> names = products.ToDictionary(p => p.Key, p => p.Value.Name);
-            int none = IconUtils.Others.None.Id;
+            int none = BoulangeriePlugin.DefaultIcon;
             string Money(double v) => BoulangeriePlugin.Money(v);
 
             Panel panel = BoulangeriePlugin.Instance.PanelHelper.Create(BoulangeriePlugin.Brand($"{BoulangeriePlugin.BizName(bizId)} - La carte"), UIPanel.PanelType.TabPrice, player,
@@ -345,7 +345,7 @@ namespace Boulangerie
             if (shown.Count == 0)
                 panel.AddTabLine(Color("Aucun produit pour le moment", Colors.Grey), "", none, _ => panel.Refresh());
             foreach (BakeryProduct p in shown)
-                panel.AddTabLine(p.Name + "<br>" + Size(StockHelper.Label(p), 14), Money(p.Price), BoulangeriePlugin.Icon(p.ItemId), _ => panel.Refresh());
+                panel.AddTabLine(p.Name + "<br>" + Size(StockHelper.Label(p), 14), Money(p.Price), BoulangeriePlugin.ProductIcon(p), _ => panel.Refresh());
 
             List<BakeryFormula> shownFormulas = formulas.Values.Where(f => f.Available && f.Items.Count > 0).OrderBy(f => f.Name).ToList();
             if (shownFormulas.Count > 0)
@@ -358,7 +358,7 @@ namespace Boulangerie
                     string state = StockHelper.FormulaAvailable(f, products) ? "" : " " + Color("Épuisée", Colors.Error);
                     string saving = separate > f.Price ? Color($" - au lieu de {Money(separate)}", Colors.Success) : "";
                     panel.AddTabLine(f.Name + state + "<br>" + Size(Color(CashRegister.DescribeFormula(f, names), Colors.Grey) + saving, 14),
-                        Money(f.Price), none, _ => panel.Refresh());
+                        Money(f.Price), BoulangeriePlugin.FormulaIcon(f), _ => panel.Refresh());
                 }
             }
 

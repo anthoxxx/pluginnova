@@ -46,6 +46,12 @@ namespace Boulangerie
 
         /// <summary>Les employés (pas seulement le patron) peuvent modifier la carte.</summary>
         public bool EmployeesCanEditMenu { get; set; } = false;
+
+        /// <summary>Icône du jeu des lignes sans icône propre (null = icône vide).</summary>
+        public int? DefaultIconId { get; set; }
+
+        /// <summary>Icône du jeu des formules sans icône propre (null = icône par défaut).</summary>
+        public int? FormulaIconId { get; set; }
     }
 
     /// <summary>Produit vendu par une boulangerie (entreprise).</summary>
@@ -72,6 +78,9 @@ namespace Boulangerie
 
         /// <summary>Quantité en stock (utilisée seulement si <see cref="TrackStock"/>).</summary>
         public int Stock { get; set; }
+
+        /// <summary>Icône du jeu affichée sur les panels (null = icône de l'item lié).</summary>
+        public int? IconId { get; set; }
     }
 
     /// <summary>Formule maison (ex. croissant + café) vendue à prix fixe.</summary>
@@ -91,6 +100,9 @@ namespace Boulangerie
         public string Content { get; set; } = "{}";
 
         public bool Available { get; set; } = true;
+
+        /// <summary>Icône du jeu affichée sur les panels (null = icône des formules de la configuration).</summary>
+        public int? IconId { get; set; }
 
         [Ignore]
         public Dictionary<int, int> Items

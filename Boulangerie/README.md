@@ -67,6 +67,20 @@ AAMenu → **Métier → Boulangerie**, ou à la caisse → **Gérer la boulange
   meilleurs vendeurs, articles les plus vendus.
 - **Historique des ventes** : les 50 derniers tickets, avec le détail de chacun.
 
+## Icônes des panels
+Les panels de Nova-Life n'affichent que les **icônes du jeu** (le serveur envoie un numéro
+d'icône, pas une image) : on ne peut pas mettre une image perso, mais on peut choisir
+n'importe quelle icône du jeu.
+- **Produit** : Produits → *Modifier* → **Icône sur les panels** (par défaut : l'icône de
+  l'item lié).
+- **Formule** : Formules → *Modifier* → **Icône sur les panels** (par défaut : l'icône des
+  formules).
+- **Configuration** : **Icône par défaut des panels** (lignes sans icône propre : actions de
+  la caisse, titres de la carte...) et **Icône des formules**.
+
+La galerie montre les icônes du jeu par pages de 30 (*Page suivante / précédente*) ; on
+peut aussi saisir directement un numéro d'icône.
+
 ## La carte client (point bleu côté client)
 Un seul panel, en deux parties :
 - **en haut, sa commande** si le boulanger lui en a envoyé une : numéro de commande, articles,

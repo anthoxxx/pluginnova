@@ -92,7 +92,7 @@ namespace Boulangerie
         public static async void OpenRegister(Player player, Cart cart)
         {
             ModKit.ModKit ctx = Plugin;
-            int none = IconUtils.Others.None.Id;
+            int none = BoulangeriePlugin.DefaultIcon;
 
             if (cart.Pending != null && (cart.Pending.Done || cart.Pending.Expired))
                 cart.Pending = null;
@@ -189,15 +189,15 @@ namespace Boulangerie
             }
 
             Panel panel = Plugin.PanelHelper.Create(BoulangeriePlugin.Brand($"{cart.RegisterName} - Produits"), UIPanel.PanelType.TabPrice, player, () => ProductPicker(player, cart));
-            panel.AddTabLine(Color($"Panier : {cart.ItemCount} article(s)", Colors.Grey), Money(cart.Total), IconUtils.Others.None.Id, _ => panel.Refresh());
+            panel.AddTabLine(Color($"Panier : {cart.ItemCount} article(s)", Colors.Grey), Money(cart.Total), BoulangeriePlugin.DefaultIcon, _ => panel.Refresh());
 
             if (products.Count == 0)
-                panel.AddTabLine("Aucun produit en vente (Gérer la boulangerie > Produits)", "", IconUtils.Others.None.Id, _ => panel.Refresh());
+                panel.AddTabLine("Aucun produit en vente (Gérer la boulangerie > Produits)", "", BoulangeriePlugin.DefaultIcon, _ => panel.Refresh());
 
             foreach (BakeryProduct product in products)
             {
                 BakeryProduct p = product;
-                panel.AddTabLine(p.Name + "<br>" + Size(StockHelper.Label(p), 14), Money(p.Price), BoulangeriePlugin.Icon(p.ItemId), _ =>
+                panel.AddTabLine(p.Name + "<br>" + Size(StockHelper.Label(p), 14), Money(p.Price), BoulangeriePlugin.ProductIcon(p), _ =>
                 {
                     if (multiple)
                     {
@@ -229,16 +229,16 @@ namespace Boulangerie
             Dictionary<int, string> productNames = allProducts.ToDictionary(p => p.Key, p => p.Value.Name);
 
             Panel panel = Plugin.PanelHelper.Create(BoulangeriePlugin.Brand($"{cart.RegisterName} - Formules"), UIPanel.PanelType.TabPrice, player, () => FormulaPicker(player, cart));
-            panel.AddTabLine(Color($"Panier : {cart.ItemCount} article(s)", Colors.Grey), Money(cart.Total), IconUtils.Others.None.Id, _ => panel.Refresh());
+            panel.AddTabLine(Color($"Panier : {cart.ItemCount} article(s)", Colors.Grey), Money(cart.Total), BoulangeriePlugin.DefaultIcon, _ => panel.Refresh());
 
             if (formulas.Count == 0)
-                panel.AddTabLine("Aucune formule (Gérer la boulangerie > Formules)", "", IconUtils.Others.None.Id, _ => panel.Refresh());
+                panel.AddTabLine("Aucune formule (Gérer la boulangerie > Formules)", "", BoulangeriePlugin.DefaultIcon, _ => panel.Refresh());
 
             foreach (BakeryFormula formula in formulas)
             {
                 BakeryFormula f = formula;
                 string state = StockHelper.FormulaAvailable(f, allProducts) ? "" : Color(" (épuisée)", Colors.Error);
-                panel.AddTabLine(f.Name + state + "<br>" + Size(Color(DescribeFormula(f, productNames), Colors.Grey), 14), Money(f.Price), IconUtils.Others.None.Id, _ =>
+                panel.AddTabLine(f.Name + state + "<br>" + Size(Color(DescribeFormula(f, productNames), Colors.Grey), 14), Money(f.Price), BoulangeriePlugin.FormulaIcon(f), _ =>
                 {
                     List<string> missing = StockHelper.MissingIfAdded(cart, true, f.Id, f.Name, f.Price, 1, allProducts, allFormulas);
                     if (missing.Count > 0)
