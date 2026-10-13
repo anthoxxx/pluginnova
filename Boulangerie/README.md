@@ -1,8 +1,9 @@
-# Boulangerie — by Loriss Strange
+# Boulangerie — By Loris Strange
 
 Plugin Nova-Life qui crée le **métier de boulanger** : une **caisse enregistreuse** (point
-bleu côté boulanger), un **point de paiement client** (point bleu côté client), une **carte** consultable par les
-clients (point bleu : produits, prix, stock, formules), un **stock** par produit, une carte de **produits** et de **formules maison** entièrement
+bleu côté boulanger), une **carte client** (point bleu côté client : la carte avec produits,
+prix, stock et formules, **et** le paiement de la commande dans le même panel), un **stock**
+par produit, une carte de **produits** et de **formules maison** entièrement
 configurable depuis AAMenu, un **paiement en espèces ou par carte** par le client, et un
 journal des ventes sur **Discord** (webhook).
 
@@ -21,13 +22,10 @@ journal des ventes sur **Discord** (webhook).
    l'**entreprise** de la boulangerie.
 2. Choisir le modèle puis **Placer ici** : un point bleu apparaît à votre position.
    Vous pouvez en placer plusieurs (plusieurs caisses dans la même boulangerie).
-3. **Créer le point de paiement client** : AAMenu → **Administration → Points → Paiement
-   client boulangerie** (ou `/paiements`) → **Nouveau modèle** → nom (ex. « Paiement
-   client ») → entreprise → **Placer ici**, côté client du comptoir.
-4. **Créer la carte** (menu pour les clients) : AAMenu → **Administration → Points → Carte
-   boulangerie** (ou `/cartes`) → **Nouveau modèle** → nom → entreprise → **Placer ici**,
-   par exemple à l'entrée ou devant la vitrine.
-5. **Configurer le plugin** : AAMenu → **Administration → Plugins → Boulangerie**
+3. **Créer la carte client** (carte + paiement) : AAMenu → **Administration → Points →
+   Carte client boulangerie** (ou `/cartes`) → **Nouveau modèle** → nom → entreprise →
+   **Placer ici**, côté client du comptoir.
+4. **Configurer le plugin** : AAMenu → **Administration → Plugins → Boulangerie**
    (ou `/boulangerie`).
 
 Dans **Modèles** : renommer une caisse, changer son entreprise, lui donner un **webhook
@@ -44,7 +42,7 @@ Dans **Points** : se téléporter, déplacer ou supprimer une caisse placée.
 | Distance max avec le client | 6 m | Rayon pour trouver le client à encaisser |
 | Commission du boulanger | 0 % | Part de la vente versée en banque au boulanger qui encaisse, le reste va dans le compte de l'entreprise |
 | Remise maximale | 30 % | Remise maximale qu'un boulanger peut faire sur un panier (0 = pas de remise) |
-| Délai au point de paiement | 600 s | Temps pendant lequel une commande attend le client au point de paiement |
+| Délai d'une commande au point Carte | 600 s | Temps pendant lequel une commande attend le client au point Carte |
 | Délai de l'addition directe | 90 s | Temps laissé au client pour payer une addition directe |
 | Prise de service obligatoire | Oui | Il faut être en service pour utiliser la caisse |
 | Donner les items au client | Oui | Le client reçoit les items liés aux produits |
@@ -69,12 +67,18 @@ AAMenu → **Métier → Boulangerie**, ou à la caisse → **Gérer la boulange
   meilleurs vendeurs, articles les plus vendus.
 - **Historique des ventes** : les 50 derniers tickets, avec le détail de chacun.
 
-## La carte (clients)
-En marchant dans le point bleu **Carte**, le client voit tous les produits en vente avec leur
-prix et leur état (*Disponible*, *En stock : 12*, *Plus que 3 !*, *Épuisé*), puis les
-formules maison avec leur contenu, leur prix et l'économie par rapport aux articles à l'unité.
-Le point de paiement affiche aussi la carte quand le client n'a pas de commande à payer, et
-le boulanger peut l'ouvrir depuis la caisse (**Voir la carte client**).
+## La carte client (point bleu côté client)
+Un seul panel, en deux parties :
+- **en haut, sa commande** si le boulanger lui en a envoyé une : numéro de commande, articles,
+  remise, **total à payer**, son argent liquide et son solde bancaire, puis **Payer en
+  espèces** / **Payer par carte bancaire** (ou **Refuser la commande**). S'il y a plusieurs
+  commandes au comptoir en attente, il choisit la sienne. Sans commande : « Aucune commande à
+  payer : commandez au comptoir ! » ;
+- **en dessous, la carte** : tous les produits en vente avec leur prix et leur état
+  (*Disponible*, *En stock : 12*, *Plus que 3 !*, *Épuisé*), puis les formules maison avec
+  leur contenu, leur prix et l'économie par rapport aux articles à l'unité.
+
+Le boulanger peut aussi consulter la carte depuis la caisse (**Voir la carte client**).
 
 ## À la caisse (boulanger)
 1. Le client demande un croissant : **+ Ajouter un produit** → *Croissant* (ou *Quantité...*).
@@ -82,16 +86,14 @@ le boulanger peut l'ouvrir depuis la caisse (**Voir la carte client**).
 2. Le panier s'affiche avec le total. Sélectionner une ligne retire 1 article.
    **Appliquer une remise** si besoin, **Vider le panier** pour recommencer.
 3. Quand le client a fini : **Encaisser le client**, puis :
-   - choisir le client à proximité → **Au point de paiement** : le client est prévenu que sa
+   - choisir le client à proximité → **Au point Carte** : le client est prévenu que sa
      commande l'attend ;
    - ou **Commande au comptoir (client non désigné)** : le premier client qui passe au point
-     de paiement la règle (pratique s'il est un peu loin) ;
+     Carte la règle (pratique s'il est un peu loin) ;
    - ou choisir le client → **Addition directe** : le récapitulatif s'ouvre tout de suite chez
-     le client, sans point de paiement.
-4. Le client marche dans le **point bleu de paiement** : il voit le **récapitulatif** (numéro
-   de commande, articles, remise, total, son argent liquide et son solde bancaire) et choisit
-   **Espèces** ou **Carte bancaire**. S'il y a plusieurs commandes au comptoir en attente,
-   il choisit la sienne.
+     le client, sans passer par le point Carte.
+4. Le client marche dans le **point bleu Carte** : sa commande s'affiche en haut de la carte,
+   il paie en **espèces** ou par **carte bancaire**.
 5. Paiement accepté : l'argent va dans le compte de l'entreprise (moins la commission), le
    client reçoit ses items, le ticket est enregistré et envoyé sur Discord.
 

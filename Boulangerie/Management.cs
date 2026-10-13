@@ -29,7 +29,7 @@ namespace Boulangerie
             int products = (await BakeryProduct.Query(p => p.BizId == bizId)).Count;
             int formulas = (await BakeryFormula.Query(f => f.BizId == bizId)).Count;
 
-            Panel panel = PanelHelper.Create("Boulangerie - Gestion", UIPanel.PanelType.Tab, player, () => ManageMenu(player, bizId, fromAAMenu));
+            Panel panel = PanelHelper.Create(BoulangeriePlugin.Brand("Boulangerie - Gestion"), UIPanel.PanelType.Tab, player, () => ManageMenu(player, bizId, fromAAMenu));
             panel.AddTabLine($"Produits ({products})", _ => ProductsList(player, bizId));
             panel.AddTabLine($"Formules maison ({formulas})", _ => FormulasList(player, bizId));
             panel.AddTabLine("Stock / réapprovisionner", _ => StockPanel(player, bizId));
@@ -54,7 +54,7 @@ namespace Boulangerie
         {
             List<BakeryProduct> products = (await BakeryProduct.Query(p => p.BizId == bizId)).OrderBy(p => p.Name).ToList();
 
-            Panel panel = PanelHelper.Create("Boulangerie - Produits", UIPanel.PanelType.TabPrice, player, () => ProductsList(player, bizId));
+            Panel panel = PanelHelper.Create(BoulangeriePlugin.Brand("Boulangerie - Produits"), UIPanel.PanelType.TabPrice, player, () => ProductsList(player, bizId));
             if (products.Count == 0)
                 panel.AddTabLine("Aucun produit : cliquez sur « Ajouter »", "", IconUtils.Others.None.Id, _ => panel.Refresh());
             foreach (BakeryProduct product in products)
@@ -77,7 +77,7 @@ namespace Boulangerie
 
         private void NewProductName(Player player, BakeryProduct product)
         {
-            Panel panel = PanelHelper.Create(NewProductTitle, UIPanel.PanelType.Input, player, () => NewProductName(player, product));
+            Panel panel = PanelHelper.Create(BoulangeriePlugin.Brand(NewProductTitle), UIPanel.PanelType.Input, player, () => NewProductName(player, product));
             panel.TextLines.Add("Étape 1/3 : nom du produit (ex. Croissant, Baguette, Café...)");
             panel.SetInputPlaceholder(product.Name ?? "Croissant");
             panel.AddButton("Suivant", _ =>
@@ -99,7 +99,7 @@ namespace Boulangerie
 
         private void NewProductPrice(Player player, BakeryProduct product)
         {
-            Panel panel = PanelHelper.Create(NewProductTitle, UIPanel.PanelType.Input, player, () => NewProductPrice(player, product));
+            Panel panel = PanelHelper.Create(BoulangeriePlugin.Brand(NewProductTitle), UIPanel.PanelType.Input, player, () => NewProductPrice(player, product));
             panel.TextLines.Add($"Étape 2/3 : prix de vente de « {product.Name} » (ex. 1.50)");
             panel.SetInputPlaceholder("1.50");
             panel.AddButton("Suivant", _ =>
@@ -134,7 +134,7 @@ namespace Boulangerie
         {
             Dictionary<int, int> inventory = InventoryUtils.ReturnPlayerInventory(player);
 
-            Panel panel = PanelHelper.Create(title, UIPanel.PanelType.TabPrice, player, () => ChooseItem(player, title, text, onChosen));
+            Panel panel = PanelHelper.Create(BoulangeriePlugin.Brand(title), UIPanel.PanelType.TabPrice, player, () => ChooseItem(player, title, text, onChosen));
             panel.AddTabLine(Color(text, Colors.Grey), "", IconUtils.Others.None.Id, _ => { });
             panel.AddTabLine("Aucun item (prestation simple)", "", IconUtils.Others.None.Id, async _ => await onChosen(panel, 0));
             panel.AddTabLine(Color("Saisir l'ID d'un item...", Colors.Info), "", IconUtils.Others.None.Id, _ =>
@@ -155,7 +155,7 @@ namespace Boulangerie
 
         private void ItemIdInput(Player player, string title, Func<Panel, int, Task> onChosen)
         {
-            Panel panel = PanelHelper.Create(title, UIPanel.PanelType.Input, player, () => ItemIdInput(player, title, onChosen));
+            Panel panel = PanelHelper.Create(BoulangeriePlugin.Brand(title), UIPanel.PanelType.Input, player, () => ItemIdInput(player, title, onChosen));
             panel.TextLines.Add("ID de l'item du jeu (0 = aucun item)");
             panel.SetInputPlaceholder("0");
             panel.AddButton("Valider", async _ =>
@@ -180,7 +180,7 @@ namespace Boulangerie
         private void ProductEdit(Player player, BakeryProduct product)
         {
             int none = IconUtils.Others.None.Id;
-            Panel panel = PanelHelper.Create("Boulangerie - Produit", UIPanel.PanelType.TabPrice, player, () => ProductEdit(player, product));
+            Panel panel = PanelHelper.Create(BoulangeriePlugin.Brand("Boulangerie - Produit"), UIPanel.PanelType.TabPrice, player, () => ProductEdit(player, product));
 
             panel.AddTabLine("Nom", product.Name, none, _ =>
                 AskInput(player, EditTitle, "Nouveau nom du produit", product.Name, async input =>
@@ -262,7 +262,7 @@ namespace Boulangerie
             List<BakeryProduct> products = (await BakeryProduct.Query(p => p.BizId == bizId)).OrderBy(p => p.Name).ToList();
             string action = "add";
 
-            Panel panel = PanelHelper.Create("Boulangerie - Stock", UIPanel.PanelType.TabPrice, player, () => StockPanel(player, bizId));
+            Panel panel = PanelHelper.Create(BoulangeriePlugin.Brand("Boulangerie - Stock"), UIPanel.PanelType.TabPrice, player, () => StockPanel(player, bizId));
             if (products.Count == 0)
                 panel.AddTabLine("Aucun produit", "", IconUtils.Others.None.Id, _ => panel.Refresh());
             foreach (BakeryProduct product in products)
@@ -322,7 +322,7 @@ namespace Boulangerie
             List<BakeryFormula> formulas = (await BakeryFormula.Query(f => f.BizId == bizId)).OrderBy(f => f.Name).ToList();
             Dictionary<int, string> names = (await BakeryProduct.Query(p => p.BizId == bizId)).ToDictionary(p => p.Id, p => p.Name);
 
-            Panel panel = PanelHelper.Create("Boulangerie - Formules", UIPanel.PanelType.TabPrice, player, () => FormulasList(player, bizId));
+            Panel panel = PanelHelper.Create(BoulangeriePlugin.Brand("Boulangerie - Formules"), UIPanel.PanelType.TabPrice, player, () => FormulasList(player, bizId));
             if (formulas.Count == 0)
                 panel.AddTabLine("Aucune formule : cliquez sur « Ajouter »", "", IconUtils.Others.None.Id, _ => panel.Refresh());
             foreach (BakeryFormula formula in formulas)
@@ -345,7 +345,7 @@ namespace Boulangerie
 
         private void NewFormulaName(Player player, BakeryFormula formula)
         {
-            Panel panel = PanelHelper.Create(NewFormulaTitle, UIPanel.PanelType.Input, player, () => NewFormulaName(player, formula));
+            Panel panel = PanelHelper.Create(BoulangeriePlugin.Brand(NewFormulaTitle), UIPanel.PanelType.Input, player, () => NewFormulaName(player, formula));
             panel.TextLines.Add("Étape 1/3 : nom de la formule (ex. Petit-déjeuner)");
             panel.SetInputPlaceholder(formula.Name ?? "Petit-déjeuner");
             panel.AddButton("Suivant", _ =>
@@ -367,7 +367,7 @@ namespace Boulangerie
 
         private void NewFormulaPrice(Player player, BakeryFormula formula)
         {
-            Panel panel = PanelHelper.Create(NewFormulaTitle, UIPanel.PanelType.Input, player, () => NewFormulaPrice(player, formula));
+            Panel panel = PanelHelper.Create(BoulangeriePlugin.Brand(NewFormulaTitle), UIPanel.PanelType.Input, player, () => NewFormulaPrice(player, formula));
             panel.TextLines.Add($"Étape 2/3 : prix de la formule « {formula.Name} » (ex. 3.50)");
             panel.SetInputPlaceholder("3.50");
             panel.AddButton("Suivant", _ =>
@@ -396,7 +396,7 @@ namespace Boulangerie
 
             double separate = products.Where(p => items.ContainsKey(p.Id)).Sum(p => p.Price * items[p.Id]);
 
-            Panel panel = PanelHelper.Create(title, UIPanel.PanelType.TabPrice, player, () => FormulaContent(player, formula, title, creating));
+            Panel panel = PanelHelper.Create(BoulangeriePlugin.Brand(title), UIPanel.PanelType.TabPrice, player, () => FormulaContent(player, formula, title, creating));
             string header = creating ? "Étape 3/3 : contenu de la formule" : "Contenu de la formule";
             panel.AddTabLine(Color($"{header} « {formula.Name} »", Colors.Grey) + "<br>" +
                 Size($"Prix formule {Money(formula.Price)} - à l'unité {Money(separate)}", 14), "", IconUtils.Others.None.Id, _ => panel.Refresh());
@@ -458,7 +458,7 @@ namespace Boulangerie
             int bizId = formula.BizId;
             Dictionary<int, string> names = (await BakeryProduct.Query(p => p.BizId == bizId)).ToDictionary(p => p.Id, p => p.Name);
 
-            Panel panel = PanelHelper.Create("Boulangerie - Formule", UIPanel.PanelType.TabPrice, player, () => FormulaEdit(player, formula));
+            Panel panel = PanelHelper.Create(BoulangeriePlugin.Brand("Boulangerie - Formule"), UIPanel.PanelType.TabPrice, player, () => FormulaEdit(player, formula));
 
             panel.AddTabLine("Nom", formula.Name, none, _ =>
                 AskInput(player, EditTitle, "Nouveau nom de la formule", formula.Name, async input =>
@@ -517,7 +517,7 @@ namespace Boulangerie
                 return $"{label} : {Bold(Money(l.Sum(s => s.Total)))} ({l.Count} vente(s))";
             }
 
-            Panel panel = PanelHelper.Create("Boulangerie - Statistiques", UIPanel.PanelType.Text, player, () => Stats(player, bizId));
+            Panel panel = PanelHelper.Create(BoulangeriePlugin.Brand("Boulangerie - Statistiques"), UIPanel.PanelType.Text, player, () => Stats(player, bizId));
             panel.TextLines.Add(Bold(BizName(bizId)));
             panel.TextLines.Add(Period("Aujourd'hui", sales.Where(s => s.Date >= midnight)));
             panel.TextLines.Add(Period("7 derniers jours", sales.Where(s => s.Date >= now - 7 * 86400)));
@@ -560,7 +560,7 @@ namespace Boulangerie
             List<BakerySale> sales = (await BakerySale.Query(s => s.BizId == bizId))
                 .OrderByDescending(s => s.Date).Take(50).ToList();
 
-            Panel panel = PanelHelper.Create("Boulangerie - Historique", UIPanel.PanelType.TabPrice, player, () => History(player, bizId));
+            Panel panel = PanelHelper.Create(BoulangeriePlugin.Brand("Boulangerie - Historique"), UIPanel.PanelType.TabPrice, player, () => History(player, bizId));
             if (sales.Count == 0)
                 panel.AddTabLine("Aucune vente pour le moment", "", IconUtils.Others.None.Id, _ => panel.Refresh());
             foreach (BakerySale sale in sales)
@@ -578,7 +578,7 @@ namespace Boulangerie
 
         private void SaleDetail(Player player, BakerySale sale)
         {
-            Panel panel = PanelHelper.Create("Boulangerie - Ticket", UIPanel.PanelType.Text, player, () => SaleDetail(player, sale));
+            Panel panel = PanelHelper.Create(BoulangeriePlugin.Brand("Boulangerie - Ticket"), UIPanel.PanelType.Text, player, () => SaleDetail(player, sale));
             panel.TextLines.Add(Bold($"Ticket #{sale.Id} - {FormatDate(sale.Date)}"));
             panel.TextLines.Add($"Caisse : {sale.RegisterName}");
             panel.TextLines.Add($"Vendeur : {sale.CashierName}");

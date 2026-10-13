@@ -13,7 +13,7 @@ using static ModKit.Helper.TextFormattingHelper;
 
 namespace Boulangerie
 {
-    /// <summary>Point bleu lié à une entreprise (point de paiement, carte...).</summary>
+    /// <summary>Point bleu lié à une entreprise (ex. la carte client).</summary>
     public interface IBizPoint : PatternData
     {
         int BizId { get; set; }
@@ -39,7 +39,7 @@ namespace Boulangerie
             ModKit.ModKit ctx = self.Context ?? BoulangeriePlugin.Instance;
 
             List<T> patterns = await ModEntity<T>.QueryAll();
-            Panel panel = ctx.PanelHelper.Create($"{label} - Placer un point", UIPanel.PanelType.Tab, player, () => CreateOrGenerate(self, player, label, example));
+            Panel panel = ctx.PanelHelper.Create(BoulangeriePlugin.Brand($"{label} - Placer un point"), UIPanel.PanelType.Tab, player, () => CreateOrGenerate(self, player, label, example));
 
             if (patterns.Count == 0)
                 panel.AddTabLine("Aucun modèle, créez-en un", _ => panel.Refresh());
@@ -69,7 +69,7 @@ namespace Boulangerie
         public static void NewPattern(ModKit.ModKit ctx, Player player, string label, string example)
         {
             string title = $"{label} - Nouveau modèle";
-            Panel panel = ctx.PanelHelper.Create(title, UIPanel.PanelType.Input, player, () => NewPattern(ctx, player, label, example));
+            Panel panel = ctx.PanelHelper.Create(BoulangeriePlugin.Brand(title), UIPanel.PanelType.Input, player, () => NewPattern(ctx, player, label, example));
             panel.TextLines.Add($"Étape 1/2 : nom du point (ex. « {example} »)");
             panel.SetInputPlaceholder(example);
 
@@ -102,7 +102,7 @@ namespace Boulangerie
             List<T> patterns = await ModEntity<T>.QueryAll();
             string action = "";
 
-            Panel panel = ctx.PanelHelper.Create($"{label} - Modèles", UIPanel.PanelType.Tab, player, () => Patterns(ctx, player, label));
+            Panel panel = ctx.PanelHelper.Create(BoulangeriePlugin.Brand($"{label} - Modèles"), UIPanel.PanelType.Tab, player, () => Patterns(ctx, player, label));
 
             if (patterns.Count == 0)
                 panel.AddTabLine("Aucun modèle", _ => panel.Refresh());
@@ -165,7 +165,7 @@ namespace Boulangerie
             Dictionary<int, string> names = (await ModEntity<T>.QueryAll()).ToDictionary(p => p.Id, p => p.PatternName);
             string action = "";
 
-            Panel panel = ctx.PanelHelper.Create($"{label} - Points placés", UIPanel.PanelType.Tab, player, () => Points(ctx, player, label));
+            Panel panel = ctx.PanelHelper.Create(BoulangeriePlugin.Brand($"{label} - Points placés"), UIPanel.PanelType.Tab, player, () => Points(ctx, player, label));
 
             if (points.Count == 0)
                 panel.AddTabLine("Aucun point placé", _ => { });
@@ -205,7 +205,7 @@ namespace Boulangerie
         }
     }
 
-    /// <summary>Point bleu « Carte » : les clients y consultent les produits, prix, stock et formules.</summary>
+    /// <summary>Point bleu « Carte » : les clients y consultent la carte et y paient leur commande.</summary>
     public class MenuBoard : ModEntity<MenuBoard>, IBizPoint
     {
         [AutoIncrement]
@@ -223,6 +223,7 @@ namespace Boulangerie
         public ModKit.ModKit Context { get; set; }
 
         public const string Label = "Carte";
+
 
         public MenuBoard() { }
 
@@ -259,28 +260,92 @@ namespace Boulangerie
         }
     }
 
-    /// <summary>Affichage de la carte d'une boulangerie (lecture seule).</summary>
+    /// <summary>
+    /// Panel du point « Carte » : en haut la commande du client à payer (récapitulatif +
+    /// espèces / carte bancaire), en dessous la carte de la boulangerie (produits, stock, formules).
+    /// </summary>
     public static class MenuCard
     {
-        /// <param name="withBack">Vrai si ouverte depuis un autre menu (bouton « Retour »).</param>
-        public static async void Show(Player player, int bizId, bool withBack, string message = null)
+        private const string Tag = BoulangeriePlugin.Tag;
+
+        /// <param name="withBack">Vrai si ouverte depuis un autre menu (bouton « Retour », pas de paiement).</param>
+        /// <param name="selected">Commande au comptoir choisie par le client parmi plusieurs.</param>
+        public static async void Show(Player player, int bizId, bool withBack, PaymentRequest selected = null)
         {
             var (products, formulas) = await StockHelper.Load(bizId);
             Dictionary<int, string> names = products.ToDictionary(p => p.Key, p => p.Value.Name);
             int none = IconUtils.Others.None.Id;
+            string Money(double v) => BoulangeriePlugin.Money(v);
 
-            Panel panel = BoulangeriePlugin.Instance.PanelHelper.Create($"{BoulangeriePlugin.BizName(bizId)} - La carte", UIPanel.PanelType.TabPrice, player,
-                () => Show(player, bizId, withBack, message));
+            Panel panel = BoulangeriePlugin.Instance.PanelHelper.Create(BoulangeriePlugin.Brand($"{BoulangeriePlugin.BizName(bizId)} - La carte"), UIPanel.PanelType.TabPrice, player,
+                () => Show(player, bizId, withBack, selected));
 
-            if (!string.IsNullOrEmpty(message))
-                panel.AddTabLine(Color(message, Colors.Info), "", none, _ => panel.Refresh());
+            // ---- Commande à payer (seulement pour le client au point Carte) ----
+            if (!withBack)
+            {
+                List<PaymentRequest> orders = CashRegister.ActiveRequests()
+                    .Where(r => r.AtPoint && r.Cart.BizId == bizId && (r.ClientNetId == player.netId || r.ClientNetId == 0))
+                    .OrderBy(r => r.OrderNumber)
+                    .ToList();
+                PaymentRequest current = orders.FirstOrDefault(r => r.ClientNetId == player.netId)
+                    ?? (selected != null && orders.Contains(selected) ? selected : null)
+                    ?? (orders.Count == 1 ? orders[0] : null);
 
+                if (current != null)
+                {
+                    PaymentRequest req = current;
+                    Cart c = req.Cart;
+                    req.ClientPanel = panel;
+                    panel.AddTabLine(Bold(Color($"VOTRE COMMANDE n°{req.OrderNumber}", Colors.Success)), Color($"servie par {req.CashierName}", Colors.Grey), none, _ => panel.Refresh());
+                    foreach (CartLine line in c.Lines)
+                        panel.AddTabLine($"{line.Quantity}x {(line.IsFormula ? "Formule " : "")}{line.Name}", Money(line.Total), none, _ => panel.Refresh());
+                    if (c.DiscountPercent > 0)
+                        panel.AddTabLine(Color($"Remise {c.DiscountPercent}%", Colors.Success), "-" + Money(c.Discount), none, _ => panel.Refresh());
+                    panel.AddTabLine(Size(Bold("TOTAL À PAYER"), 20) + "<br>" + Size(Color($"Espèces : {Money(player.Money)} | Banque : {Money(player.Bank)}", Colors.Grey), 14),
+                        Bold(Money(c.Total)), none, _ => panel.Refresh());
+                    panel.AddTabLine(Color("> Payer en espèces", Colors.Success), "", none, async _ => await PayFromCard(player, panel, req, true));
+                    panel.AddTabLine(Color("> Payer par carte bancaire", Colors.Info), "", none, async _ => await PayFromCard(player, panel, req, false));
+                    if (req.ClientNetId == player.netId)
+                        panel.AddTabLine(Color("Refuser la commande", Colors.Error), "", none, _ =>
+                        {
+                            CashRegister.Decline(player, req);
+                            panel.Refresh();
+                        });
+                    else if (orders.Count > 1)
+                        panel.AddTabLine(Color("Ce n'est pas ma commande", Colors.Grey), "", none, _ =>
+                        {
+                            player.ClosePanel(panel);
+                            Show(player, bizId, false, orders.FirstOrDefault(o => o != req));
+                        });
+                }
+                else if (orders.Count > 1)
+                {
+                    panel.AddTabLine(Bold(Color("COMMANDES EN ATTENTE - choisissez la vôtre", Colors.Success)), "", none, _ => panel.Refresh());
+                    foreach (PaymentRequest order in orders)
+                    {
+                        PaymentRequest o = order;
+                        string content = string.Join(", ", o.Cart.Lines.Select(l => $"{l.Quantity}x {l.Name}"));
+                        panel.AddTabLine($"Commande n°{o.OrderNumber} - servie par {o.CashierName}<br>" + Size(Color(content, Colors.Grey), 14),
+                            Money(o.Cart.Total), none, _ =>
+                            {
+                                player.ClosePanel(panel);
+                                Show(player, bizId, false, o);
+                            });
+                    }
+                }
+                else
+                {
+                    panel.AddTabLine(Color("Aucune commande à payer : commandez au comptoir !", Colors.Grey), "", none, _ => panel.Refresh());
+                }
+            }
+
+            // ---- La carte ----
             List<BakeryProduct> shown = products.Values.Where(p => p.Available).OrderBy(p => p.Name).ToList();
             panel.AddTabLine(Bold(Color("PRODUITS", Colors.Orange)), "", none, _ => panel.Refresh());
             if (shown.Count == 0)
                 panel.AddTabLine(Color("Aucun produit pour le moment", Colors.Grey), "", none, _ => panel.Refresh());
             foreach (BakeryProduct p in shown)
-                panel.AddTabLine(p.Name + "<br>" + Size(StockHelper.Label(p), 14), BoulangeriePlugin.Money(p.Price), BoulangeriePlugin.Icon(p.ItemId), _ => panel.Refresh());
+                panel.AddTabLine(p.Name + "<br>" + Size(StockHelper.Label(p), 14), Money(p.Price), BoulangeriePlugin.Icon(p.ItemId), _ => panel.Refresh());
 
             List<BakeryFormula> shownFormulas = formulas.Values.Where(f => f.Available && f.Items.Count > 0).OrderBy(f => f.Name).ToList();
             if (shownFormulas.Count > 0)
@@ -291,19 +356,28 @@ namespace Boulangerie
                     Dictionary<int, int> items = f.Items;
                     double separate = items.Sum(i => products.TryGetValue(i.Key, out BakeryProduct p) ? p.Price * i.Value : 0);
                     string state = StockHelper.FormulaAvailable(f, products) ? "" : " " + Color("Épuisée", Colors.Error);
-                    string saving = separate > f.Price ? Color($" - au lieu de {BoulangeriePlugin.Money(separate)}", Colors.Success) : "";
+                    string saving = separate > f.Price ? Color($" - au lieu de {Money(separate)}", Colors.Success) : "";
                     panel.AddTabLine(f.Name + state + "<br>" + Size(Color(CashRegister.DescribeFormula(f, names), Colors.Grey) + saving, 14),
-                        BoulangeriePlugin.Money(f.Price), none, _ => panel.Refresh());
+                        Money(f.Price), none, _ => panel.Refresh());
                 }
             }
 
-            panel.AddTabLine(Color("Commandez au comptoir auprès du boulanger.", Colors.Grey), "", none, _ => panel.Refresh());
+            panel.AddTabLine(Size(Color(BoulangeriePlugin.Signature, Colors.Purple), 14), "", none, _ => panel.Refresh());
 
+            panel.AddButton("Sélectionner", _ => panel.SelectTab());
             panel.AddButton("Actualiser", _ => panel.Refresh());
             if (withBack)
                 panel.PreviousButton();
             panel.CloseButton();
             panel.Display();
+        }
+
+        private static async Task PayFromCard(Player player, Panel panel, PaymentRequest req, bool cash)
+        {
+            if (await CashRegister.Pay(player, req, cash))
+                panel.Close();
+            else
+                panel.Refresh();
         }
     }
 }

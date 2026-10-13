@@ -89,11 +89,11 @@ namespace Boulangerie
         public int CashierCharacterId;
         public uint CashierNetId;
         public string CashierName;
-        /// <summary>0 = commande au comptoir, payable par le premier client au point de paiement.</summary>
+        /// <summary>0 = commande au comptoir, payable par le premier client au point Carte.</summary>
         public uint ClientNetId;
         public string ClientName;
         public int OrderNumber;
-        /// <summary>Vrai : le client paie au point de paiement ; faux : panel affiché directement.</summary>
+        /// <summary>Vrai : le client paie au point Carte ; faux : panel affiché directement.</summary>
         public bool AtPoint;
         public DateTime ExpiresAt;
         public bool Done;

@@ -6,7 +6,7 @@
     <AssemblyName>Boulangerie</AssemblyName>
     <RootNamespace>Boulangerie</RootNamespace>
     <Version>1.0.0</Version>
-    <Authors>Loriss Strange</Authors>
+    <Authors>Loris Strange</Authors>
     <!-- Dossier contenant TOUTES les DLL nécessaires (voir libs/README.md) -->
     <LibsPath Condition="'$(LibsPath)' == ''">$(MSBuildThisFileDirectory)libs</LibsPath>
   </PropertyGroup>

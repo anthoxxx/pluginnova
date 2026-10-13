@@ -20,13 +20,18 @@ using static ModKit.Helper.TextFormattingHelper;
 namespace Boulangerie
 {
     /// <summary>
-    /// Boulangerie by Loriss Strange : métier de boulanger avec caisse enregistreuse
+    /// Boulangerie By Loris Strange : métier de boulanger avec caisse enregistreuse
     /// (point bleu), produits et formules configurables, paiement espèces / carte
     /// et journal des ventes sur Discord.
     /// </summary>
     public partial class BoulangeriePlugin : ModKit.ModKit
     {
-        public const string Tag = "Boulangerie";
+        public const string Tag = "Boulangerie - By Loris Strange";
+
+        public const string Signature = "Boulangerie - By Loris Strange";
+
+        /// <summary>Titre de panel signé.</summary>
+        public static string Brand(string title) => title + " - By Loris Strange";
 
         public static BoulangeriePlugin Instance { get; private set; }
 
@@ -38,7 +43,7 @@ namespace Boulangerie
 
         public BoulangeriePlugin(IGameAPI api) : base(api)
         {
-            PluginInformations = new PluginInformations(AssemblyHelper.GetName(), "1.0.0", "Loriss Strange");
+            PluginInformations = new PluginInformations(AssemblyHelper.GetName(), "1.0.0", "Loris Strange");
         }
 
         public override void OnPluginInit()
@@ -48,7 +53,6 @@ namespace Boulangerie
 
             Orm.RegisterTable<BakeryConfig>();
             Orm.RegisterTable<CashRegister>();
-            Orm.RegisterTable<PaymentPoint>();
             Orm.RegisterTable<MenuBoard>();
             Orm.RegisterTable<BakeryProduct>();
             Orm.RegisterTable<BakeryFormula>();
@@ -57,25 +61,22 @@ namespace Boulangerie
 
             CashRegister pattern = new CashRegister(false);
             PointHelper.AddPattern(nameof(CashRegister), pattern);
-            PaymentPoint paymentPoint = new PaymentPoint(false);
-            PointHelper.AddPattern(nameof(PaymentPoint), paymentPoint);
             MenuBoard menuBoard = new MenuBoard(false);
             PointHelper.AddPattern(nameof(MenuBoard), menuBoard);
 
             if (AAMenu.AAMenu.menu != null)
             {
                 // Administration > Points : placer / gérer les caisses
-                AAMenu.AAMenu.menu.AddBuilder(PluginInformations, "Caisse boulangerie", pattern, this);
-                AAMenu.AAMenu.menu.AddBuilder(PluginInformations, "Paiement client boulangerie", paymentPoint, this);
-                AAMenu.AAMenu.menu.AddBuilder(PluginInformations, "Carte boulangerie", menuBoard, this);
+                AAMenu.AAMenu.menu.AddBuilder(PluginInformations, "Caisse boulangerie - By Loris Strange", pattern, this);
+                AAMenu.AAMenu.menu.AddBuilder(PluginInformations, "Carte client boulangerie - By Loris Strange", menuBoard, this);
                 // Administration > Plugins : configuration du plugin
-                AAMenu.Menu.AddAdminPluginTabLine(PluginInformations, 1, "Boulangerie", ui =>
+                AAMenu.Menu.AddAdminPluginTabLine(PluginInformations, 1, "Boulangerie - By Loris Strange", ui =>
                 {
                     Player player = FindPlayer(ui.playerId);
                     if (player != null) ConfigPanel(player);
                 });
                 // Métier : gestion de la carte par le patron
-                AAMenu.Menu.AddBizTabLine(PluginInformations, new List<Activity.Type> { Activity.Type.None }, null, "Boulangerie", ui =>
+                AAMenu.Menu.AddBizTabLine(PluginInformations, new List<Activity.Type> { Activity.Type.None }, null, "Boulangerie - By Loris Strange", ui =>
                 {
                     Player player = FindPlayer(ui.playerId);
                     if (player != null) BizMenu(player);
@@ -87,7 +88,7 @@ namespace Boulangerie
             }
 
             RegisterCommands();
-            Logger.LogSuccess($"{PluginInformations.SourceName} v{PluginInformations.Version}", "initialisé (by Loriss Strange)");
+            Logger.LogSuccess($"{PluginInformations.SourceName} v{PluginInformations.Version}", "initialisé (By Loris Strange)");
         }
 
         public override void OnPlayerSpawnCharacter(Player player, NetworkConnection conn, Characters character)
@@ -147,7 +148,7 @@ namespace Boulangerie
                     new CashRegister(false) { Context = this }.CreateOrGenerate(player);
                 })).Register();
 
-            new SChatCommand("/cartes", "Placer / gérer les cartes de boulangerie (staff)", "/cartes",
+            new SChatCommand("/cartes", "Placer / gérer les cartes client de boulangerie (staff)", "/cartes",
                 (Action<Player, string[]>)((player, args) =>
                 {
                     if (!IsStaff(player))
@@ -158,16 +159,6 @@ namespace Boulangerie
                     new MenuBoard(false) { Context = this }.CreateOrGenerate(player);
                 })).Register();
 
-            new SChatCommand("/paiements", "Placer / gérer les points de paiement client (staff)", "/paiements",
-                (Action<Player, string[]>)((player, args) =>
-                {
-                    if (!IsStaff(player))
-                    {
-                        player.Notify(Tag, "Vous devez être staff et en service admin.", NotificationManager.Type.Error, 5f);
-                        return;
-                    }
-                    new PaymentPoint(false) { Context = this }.CreateOrGenerate(player);
-                })).Register();
         }
 
         // ------------------------------------------------------------------
@@ -230,7 +221,7 @@ namespace Boulangerie
                 {
                     await DiscordHelper.SendEmbed(new DiscordWebhookClient(url.Trim()), color, title,
                         string.IsNullOrWhiteSpace(description) ? "-" : description,
-                        names, values, true, true, "Boulangerie by Loriss Strange");
+                        names, values, true, true, "Boulangerie By Loris Strange");
                 }
                 catch (Exception ex)
                 {
@@ -242,7 +233,7 @@ namespace Boulangerie
         /// <summary>Panel de saisie simple : retourne au panel précédent si <paramref name="onValidate"/> renvoie vrai.</summary>
         public void AskInput(Player player, string title, string text, string placeholder, Func<string, Task<bool>> onValidate)
         {
-            Panel panel = PanelHelper.Create(title, UIPanel.PanelType.Input, player, () => AskInput(player, title, text, placeholder, onValidate));
+            Panel panel = PanelHelper.Create(BoulangeriePlugin.Brand(title), UIPanel.PanelType.Input, player, () => AskInput(player, title, text, placeholder, onValidate));
             panel.TextLines.Add(text);
             panel.SetInputPlaceholder(placeholder ?? "");
             panel.PreviousButtonWithAction("Valider", async () => await onValidate(panel.inputText?.Trim() ?? ""));
@@ -274,7 +265,7 @@ namespace Boulangerie
                 .OrderBy(b => b.Id)
                 .ToList();
 
-            Panel panel = PanelHelper.Create(title, UIPanel.PanelType.Tab, player, () => ChooseBiz(player, title, onlyBizIds, onChosen));
+            Panel panel = PanelHelper.Create(BoulangeriePlugin.Brand(title), UIPanel.PanelType.Tab, player, () => ChooseBiz(player, title, onlyBizIds, onChosen));
             if (bizs.Count == 0)
                 panel.AddTabLine("Aucune entreprise", _ => panel.Refresh());
             foreach (Bizs biz in bizs)
@@ -329,7 +320,7 @@ namespace Boulangerie
 
             BakeryConfig c = Config;
             const string edit = "Boulangerie - Réglage";
-            Panel panel = PanelHelper.Create("Boulangerie - Configuration", UIPanel.PanelType.TabPrice, player, () => ConfigPanel(player));
+            Panel panel = PanelHelper.Create(BoulangeriePlugin.Brand("Boulangerie - Configuration"), UIPanel.PanelType.TabPrice, player, () => ConfigPanel(player));
             int none = IconUtils.Others.None.Id;
 
             panel.AddTabLine("Webhook Discord (URL)", string.IsNullOrWhiteSpace(c.WebhookUrl) ? Color("Non défini", Colors.Error) : Color("Défini", Colors.Success), none, _ =>
@@ -377,8 +368,8 @@ namespace Boulangerie
                 AskInt(player, edit, "Remise maximale qu'un boulanger peut appliquer sur un panier", c.MaxDiscountPercent, 0, 100, async v => { c.MaxDiscountPercent = v; await c.Save(); }));
             panel.AddTabLine("Délai de l'addition directe", $"{c.PaymentTimeout} s", none, _ =>
                 AskInt(player, edit, "Temps laissé au client pour payer (secondes)", c.PaymentTimeout, 10, 600, async v => { c.PaymentTimeout = v; await c.Save(); }));
-            panel.AddTabLine("Délai au point de paiement", $"{(c.PointOrderTimeout > 0 ? c.PointOrderTimeout : 600)} s", none, _ =>
-                AskInt(player, edit, "Temps pendant lequel une commande attend le client au point de paiement (secondes)", c.PointOrderTimeout > 0 ? c.PointOrderTimeout : 600, 30, 3600, async v => { c.PointOrderTimeout = v; await c.Save(); }));
+            panel.AddTabLine("Délai d'une commande au point Carte", $"{(c.PointOrderTimeout > 0 ? c.PointOrderTimeout : 600)} s", none, _ =>
+                AskInt(player, edit, "Temps pendant lequel une commande attend le client au point Carte (secondes)", c.PointOrderTimeout > 0 ? c.PointOrderTimeout : 600, 30, 3600, async v => { c.PointOrderTimeout = v; await c.Save(); }));
             panel.AddTabLine("Prise de service obligatoire", OnOff(c.RequireService), none, async _ => { c.RequireService = !c.RequireService; await c.Save(); panel.Refresh(); });
             panel.AddTabLine("Donner les items au client", OnOff(c.GiveItems), none, async _ => { c.GiveItems = !c.GiveItems; await c.Save(); panel.Refresh(); });
             panel.AddTabLine("Prendre les items dans l'inventaire du boulanger", OnOff(c.UseCashierStock), none, async _ => { c.UseCashierStock = !c.UseCashierStock; await c.Save(); panel.Refresh(); });
@@ -395,8 +386,7 @@ namespace Boulangerie
                 ChooseBiz(player, "Boulangerie - Choisir la boulangerie", bizIds, (p, biz) => { player.ClosePanel(p); ManageMenu(player, biz.Id); return Task.CompletedTask; });
             });
             panel.AddTabLine(Color("Placer / gérer les caisses", Colors.Info), "", none, _ => new CashRegister(false) { Context = this }.CreateOrGenerate(player));
-            panel.AddTabLine(Color("Placer / gérer les points de paiement client", Colors.Info), "", none, _ => new PaymentPoint(false) { Context = this }.CreateOrGenerate(player));
-            panel.AddTabLine(Color("Placer / gérer les cartes (menu client)", Colors.Info), "", none, _ => new MenuBoard(false) { Context = this }.CreateOrGenerate(player));
+            panel.AddTabLine(Color("Placer / gérer les cartes client (carte + paiement)", Colors.Info), "", none, _ => new MenuBoard(false) { Context = this }.CreateOrGenerate(player));
 
             panel.NextButton("Sélectionner", () => panel.SelectTab());
             if (AAMenu.AAMenu.menu != null)

@@ -102,12 +102,12 @@ namespace Boulangerie
             int characterId = player.character.Id;
             List<BakerySale> mySales = await BakerySale.Query(s => s.CashierId == characterId && s.Date >= midnight);
 
-            Panel panel = ctx.PanelHelper.Create($"{cart.RegisterName} - Caisse", UIPanel.PanelType.TabPrice, player, () => OpenRegister(player, cart));
+            Panel panel = ctx.PanelHelper.Create(BoulangeriePlugin.Brand($"{cart.RegisterName} - Caisse"), UIPanel.PanelType.TabPrice, player, () => OpenRegister(player, cart));
 
             if (cart.Pending != null)
             {
                 PaymentRequest req = cart.Pending;
-                panel.AddTabLine(Color(req.AtPoint ? $"Commande n°{req.OrderNumber} au point de paiement ({req.ClientName})" : $"En attente du paiement de {req.ClientName}", Colors.Warning) + "<br>" + Size("Sélectionner pour annuler la demande", 14),
+                panel.AddTabLine(Color(req.AtPoint ? $"Commande n°{req.OrderNumber} au point Carte ({req.ClientName})" : $"En attente du paiement de {req.ClientName}", Colors.Warning) + "<br>" + Size("Sélectionner pour annuler la demande", 14),
                     Money(req.Cart.Total), none, _ =>
                     {
                         CancelRequest(req, "Le boulanger a annulé la demande de paiement.");
@@ -188,7 +188,7 @@ namespace Boulangerie
                 return true;
             }
 
-            Panel panel = Plugin.PanelHelper.Create($"{cart.RegisterName} - Produits", UIPanel.PanelType.TabPrice, player, () => ProductPicker(player, cart));
+            Panel panel = Plugin.PanelHelper.Create(BoulangeriePlugin.Brand($"{cart.RegisterName} - Produits"), UIPanel.PanelType.TabPrice, player, () => ProductPicker(player, cart));
             panel.AddTabLine(Color($"Panier : {cart.ItemCount} article(s)", Colors.Grey), Money(cart.Total), IconUtils.Others.None.Id, _ => panel.Refresh());
 
             if (products.Count == 0)
@@ -228,7 +228,7 @@ namespace Boulangerie
             List<BakeryFormula> formulas = allFormulas.Values.Where(f => f.Available).OrderBy(f => f.Name).ToList();
             Dictionary<int, string> productNames = allProducts.ToDictionary(p => p.Key, p => p.Value.Name);
 
-            Panel panel = Plugin.PanelHelper.Create($"{cart.RegisterName} - Formules", UIPanel.PanelType.TabPrice, player, () => FormulaPicker(player, cart));
+            Panel panel = Plugin.PanelHelper.Create(BoulangeriePlugin.Brand($"{cart.RegisterName} - Formules"), UIPanel.PanelType.TabPrice, player, () => FormulaPicker(player, cart));
             panel.AddTabLine(Color($"Panier : {cart.ItemCount} article(s)", Colors.Grey), Money(cart.Total), IconUtils.Others.None.Id, _ => panel.Refresh());
 
             if (formulas.Count == 0)
@@ -280,9 +280,9 @@ namespace Boulangerie
             }
 
             int bizId = cart.BizId;
-            List<PaymentPoint> points = await PaymentPoint.Query(p => p.BizId == bizId);
+            List<MenuBoard> points = await MenuBoard.Query(p => p.BizId == bizId);
             bool hasPoint = points.Count > 0;
-            // Par défaut : au point de paiement s'il en existe un, sinon addition directe
+            // Par défaut : au point Carte s'il en existe un, sinon addition directe
             bool toPoint = hasPoint;
 
             List<Player> clients = Nova.server.GetPlayersInRange(Config.MaxClientDistance, player.setup.transform.position)
@@ -291,16 +291,16 @@ namespace Boulangerie
             // Un staff seul peut tester la caisse sur lui-même
             if (BoulangeriePlugin.IsStaff(player)) clients.Add(player);
 
-            Panel panel = Plugin.PanelHelper.Create($"{cart.RegisterName} - Client", UIPanel.PanelType.Tab, player, () => ChooseClient(player, cart));
+            Panel panel = Plugin.PanelHelper.Create(BoulangeriePlugin.Brand($"{cart.RegisterName} - Client"), UIPanel.PanelType.Tab, player, () => ChooseClient(player, cart));
             panel.TextLines.Add($"Total : {Money(cart.Total)}");
 
             if (hasPoint)
                 panel.AddTabLine(Color("Commande au comptoir (client non désigné)", Colors.Info) + "<br>" +
-                    Size("Le premier client qui passe au point de paiement la règle", 14), _ =>
+                    Size("Le premier client qui passe au point Carte la règle", 14), _ =>
                 {
                     if (!toPoint)
                     {
-                        player.Notify(Tag, "Une commande sans client désigné doit aller au point de paiement.", NotificationManager.Type.Warning, 5f);
+                        player.Notify(Tag, "Une commande sans client désigné doit aller au point Carte.", NotificationManager.Type.Warning, 5f);
                         panel.Refresh();
                         return;
                     }
@@ -323,14 +323,14 @@ namespace Boulangerie
             }
 
             if (hasPoint)
-                panel.NextButton(Color("Au point de paiement", Colors.Success), () => { toPoint = true; panel.SelectTab(); });
+                panel.NextButton(Color("Au point Carte", Colors.Success), () => { toPoint = true; panel.SelectTab(); });
             panel.NextButton(hasPoint ? "Addition directe" : "Envoyer l'addition", () => { toPoint = false; panel.SelectTab(); });
             panel.PreviousButton("Panier");
             panel.CloseButton();
             panel.Display();
         }
 
-        /// <summary>Demandes de paiement en cours (directes ou au point de paiement).</summary>
+        /// <summary>Demandes de paiement en cours (directes ou au point Carte).</summary>
         internal static readonly List<PaymentRequest> Requests = new List<PaymentRequest>();
 
         private static int _lastOrderNumber;
@@ -383,7 +383,7 @@ namespace Boulangerie
                 return;
             }
 
-            string where = string.IsNullOrWhiteSpace(pointName) ? "au point de paiement" : $"au point de paiement « {pointName} »";
+            string where = string.IsNullOrWhiteSpace(pointName) ? "au point Carte" : $"au point « {pointName} »";
             client?.Notify(Tag, $"Votre commande n°{number} ({Money(req.Cart.Total)}) vous attend {where}.", NotificationManager.Type.Info, 8f);
             cashier.Notify(Tag, $"Commande n°{number} ({Money(req.Cart.Total)}) envoyée {where}"
                 + (client != null ? $" pour {client.FullName}." : "."), NotificationManager.Type.Info, 6f);
@@ -394,7 +394,7 @@ namespace Boulangerie
         {
             Cart c = req.Cart;
             string title = req.AtPoint ? $"{BoulangeriePlugin.BizName(c.BizId)} - Paiement" : $"{c.RegisterName} - Addition";
-            Panel panel = Plugin.PanelHelper.Create(title, UIPanel.PanelType.Text, client, () => ShowPaymentPanel(client, req));
+            Panel panel = Plugin.PanelHelper.Create(BoulangeriePlugin.Brand(title), UIPanel.PanelType.Text, client, () => ShowPaymentPanel(client, req));
 
             panel.TextLines.Add(Bold(BoulangeriePlugin.BizName(c.BizId)) + (req.AtPoint ? $" - Commande n°{req.OrderNumber}" : ""));
             panel.TextLines.Add(Color($"Servi par {req.CashierName}", Colors.Grey));
@@ -424,7 +424,7 @@ namespace Boulangerie
             panel.Display();
         }
 
-        private static void Decline(Player client, PaymentRequest req)
+        internal static void Decline(Player client, PaymentRequest req)
         {
             if (req.Done) return;
             Finish(req);
@@ -451,7 +451,7 @@ namespace Boulangerie
         }
 
         /// <summary>Paiement par le client. Renvoie vrai pour fermer le panel.</summary>
-        private static async Task<bool> Pay(Player client, PaymentRequest req, bool cash)
+        internal static async Task<bool> Pay(Player client, PaymentRequest req, bool cash)
         {
             if (req.Done)
             {
@@ -649,7 +649,7 @@ namespace Boulangerie
             }
 
             List<CashRegister> patterns = await QueryAll();
-            Panel panel = Context.PanelHelper.Create("Caisses - Placer une caisse", UIPanel.PanelType.Tab, player, () => CreateOrGenerate(player));
+            Panel panel = Context.PanelHelper.Create(BoulangeriePlugin.Brand("Caisses - Placer une caisse"), UIPanel.PanelType.Tab, player, () => CreateOrGenerate(player));
 
             if (patterns.Count == 0)
                 panel.AddTabLine("Aucun modèle, créez-en un", _ => panel.Refresh());
@@ -680,7 +680,7 @@ namespace Boulangerie
         public void SetPatternData(Player player)
         {
             const string title = "Caisses - Nouveau modèle";
-            Panel panel = Context.PanelHelper.Create(title, UIPanel.PanelType.Input, player, () => SetPatternData(player));
+            Panel panel = Context.PanelHelper.Create(BoulangeriePlugin.Brand(title), UIPanel.PanelType.Input, player, () => SetPatternData(player));
             panel.TextLines.Add("Étape 1/2 : nom de la caisse (ex. « Caisse comptoir »)");
             panel.SetInputPlaceholder("Caisse");
 
@@ -714,7 +714,7 @@ namespace Boulangerie
             List<CashRegister> patterns = await QueryAll();
             string action = "";
 
-            Panel panel = Context.PanelHelper.Create("Caisses - Modèles", UIPanel.PanelType.Tab, player, async () => await GetPatternData(player, forEdit));
+            Panel panel = Context.PanelHelper.Create(BoulangeriePlugin.Brand("Caisses - Modèles"), UIPanel.PanelType.Tab, player, async () => await GetPatternData(player, forEdit));
 
             if (patterns.Count == 0)
                 panel.AddTabLine("Aucun modèle", _ => panel.Refresh());
@@ -791,7 +791,7 @@ namespace Boulangerie
             Dictionary<int, string> names = (await QueryAll()).ToDictionary(p => p.Id, p => p.PatternName);
             string action = "";
 
-            Panel panel = Context.PanelHelper.Create("Caisses - Points placés", UIPanel.PanelType.Tab, player, async () => await GetNPoints(player));
+            Panel panel = Context.PanelHelper.Create(BoulangeriePlugin.Brand("Caisses - Points placés"), UIPanel.PanelType.Tab, player, async () => await GetNPoints(player));
 
             if (points.Count == 0)
                 panel.AddTabLine("Aucune caisse placée", _ => { });
