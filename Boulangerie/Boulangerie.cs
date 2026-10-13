@@ -48,6 +48,7 @@ namespace Boulangerie
 
             Orm.RegisterTable<BakeryConfig>();
             Orm.RegisterTable<CashRegister>();
+            Orm.RegisterTable<PaymentPoint>();
             Orm.RegisterTable<BakeryProduct>();
             Orm.RegisterTable<BakeryFormula>();
             Orm.RegisterTable<BakerySale>();
@@ -55,11 +56,14 @@ namespace Boulangerie
 
             CashRegister pattern = new CashRegister(false);
             PointHelper.AddPattern(nameof(CashRegister), pattern);
+            PaymentPoint paymentPoint = new PaymentPoint(false);
+            PointHelper.AddPattern(nameof(PaymentPoint), paymentPoint);
 
             if (AAMenu.AAMenu.menu != null)
             {
                 // Administration > Points : placer / gérer les caisses
                 AAMenu.AAMenu.menu.AddBuilder(PluginInformations, "Caisse boulangerie", pattern, this);
+                AAMenu.AAMenu.menu.AddBuilder(PluginInformations, "Paiement client boulangerie", paymentPoint, this);
                 // Administration > Plugins : configuration du plugin
                 AAMenu.Menu.AddAdminPluginTabLine(PluginInformations, 1, "Boulangerie", ui =>
                 {
@@ -137,6 +141,17 @@ namespace Boulangerie
                         return;
                     }
                     new CashRegister(false) { Context = this }.CreateOrGenerate(player);
+                })).Register();
+
+            new SChatCommand("/paiements", "Placer / gérer les points de paiement client (staff)", "/paiements",
+                (Action<Player, string[]>)((player, args) =>
+                {
+                    if (!IsStaff(player))
+                    {
+                        player.Notify(Tag, "Vous devez être staff et en service admin.", NotificationManager.Type.Error, 5f);
+                        return;
+                    }
+                    new PaymentPoint(false) { Context = this }.CreateOrGenerate(player);
                 })).Register();
         }
 
@@ -345,8 +360,10 @@ namespace Boulangerie
                 AskInt(player, edit, "Part de chaque vente versée sur le compte du boulanger (le reste va à l'entreprise)", c.CommissionPercent, 0, 100, async v => { c.CommissionPercent = v; await c.Save(); }));
             panel.AddTabLine("Remise maximale", $"{c.MaxDiscountPercent}%", none, _ =>
                 AskInt(player, edit, "Remise maximale qu'un boulanger peut appliquer sur un panier", c.MaxDiscountPercent, 0, 100, async v => { c.MaxDiscountPercent = v; await c.Save(); }));
-            panel.AddTabLine("Délai de paiement", $"{c.PaymentTimeout} s", none, _ =>
+            panel.AddTabLine("Délai de l'addition directe", $"{c.PaymentTimeout} s", none, _ =>
                 AskInt(player, edit, "Temps laissé au client pour payer (secondes)", c.PaymentTimeout, 10, 600, async v => { c.PaymentTimeout = v; await c.Save(); }));
+            panel.AddTabLine("Délai au point de paiement", $"{(c.PointOrderTimeout > 0 ? c.PointOrderTimeout : 600)} s", none, _ =>
+                AskInt(player, edit, "Temps pendant lequel une commande attend le client au point de paiement (secondes)", c.PointOrderTimeout > 0 ? c.PointOrderTimeout : 600, 30, 3600, async v => { c.PointOrderTimeout = v; await c.Save(); }));
             panel.AddTabLine("Prise de service obligatoire", OnOff(c.RequireService), none, async _ => { c.RequireService = !c.RequireService; await c.Save(); panel.Refresh(); });
             panel.AddTabLine("Donner les items au client", OnOff(c.GiveItems), none, async _ => { c.GiveItems = !c.GiveItems; await c.Save(); panel.Refresh(); });
             panel.AddTabLine("Prendre les items dans l'inventaire du boulanger", OnOff(c.UseCashierStock), none, async _ => { c.UseCashierStock = !c.UseCashierStock; await c.Save(); panel.Refresh(); });
@@ -363,6 +380,7 @@ namespace Boulangerie
                 ChooseBiz(player, "Boulangerie - Choisir la boulangerie", bizIds, (p, biz) => { player.ClosePanel(p); ManageMenu(player, biz.Id); return Task.CompletedTask; });
             });
             panel.AddTabLine(Color("Placer / gérer les caisses", Colors.Info), "", none, _ => new CashRegister(false) { Context = this }.CreateOrGenerate(player));
+            panel.AddTabLine(Color("Placer / gérer les points de paiement client", Colors.Info), "", none, _ => new PaymentPoint(false) { Context = this }.CreateOrGenerate(player));
 
             panel.NextButton("Sélectionner", () => panel.SelectTab());
             if (AAMenu.AAMenu.menu != null)

@@ -41,6 +41,9 @@ namespace Boulangerie
         /// <summary>Durée (secondes) pendant laquelle le client peut payer avant que la demande expire.</summary>
         public int PaymentTimeout { get; set; } = 90;
 
+        /// <summary>Durée (secondes) pendant laquelle une commande attend au point de paiement.</summary>
+        public int PointOrderTimeout { get; set; } = 600;
+
         /// <summary>Les employés (pas seulement le patron) peuvent modifier la carte.</summary>
         public bool EmployeesCanEditMenu { get; set; } = false;
     }

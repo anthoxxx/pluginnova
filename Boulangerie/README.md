@@ -1,7 +1,7 @@
 # Boulangerie — by Loriss Strange
 
 Plugin Nova-Life qui crée le **métier de boulanger** : une **caisse enregistreuse** (point
-bleu) dans la boulangerie, une carte de **produits** et de **formules maison** entièrement
+bleu côté boulanger), un **point de paiement client** (point bleu côté client), une carte de **produits** et de **formules maison** entièrement
 configurable depuis AAMenu, un **paiement en espèces ou par carte** par le client, et un
 journal des ventes sur **Discord** (webhook).
 
@@ -20,7 +20,10 @@ journal des ventes sur **Discord** (webhook).
    l'**entreprise** de la boulangerie.
 2. Choisir le modèle puis **Placer ici** : un point bleu apparaît à votre position.
    Vous pouvez en placer plusieurs (plusieurs caisses dans la même boulangerie).
-3. **Configurer le plugin** : AAMenu → **Administration → Plugins → Boulangerie**
+3. **Créer le point de paiement client** : AAMenu → **Administration → Points → Paiement
+   client boulangerie** (ou `/paiements`) → **Nouveau modèle** → nom (ex. « Paiement
+   client ») → entreprise → **Placer ici**, côté client du comptoir.
+4. **Configurer le plugin** : AAMenu → **Administration → Plugins → Boulangerie**
    (ou `/boulangerie`).
 
 Dans **Modèles** : renommer une caisse, changer son entreprise, lui donner un **webhook
@@ -37,7 +40,8 @@ Dans **Points** : se téléporter, déplacer ou supprimer une caisse placée.
 | Distance max avec le client | 6 m | Rayon pour trouver le client à encaisser |
 | Commission du boulanger | 0 % | Part de la vente versée en banque au boulanger qui encaisse, le reste va dans le compte de l'entreprise |
 | Remise maximale | 30 % | Remise maximale qu'un boulanger peut faire sur un panier (0 = pas de remise) |
-| Délai de paiement | 90 s | Temps laissé au client pour payer |
+| Délai au point de paiement | 600 s | Temps pendant lequel une commande attend le client au point de paiement |
+| Délai de l'addition directe | 90 s | Temps laissé au client pour payer une addition directe |
 | Prise de service obligatoire | Oui | Il faut être en service pour utiliser la caisse |
 | Donner les items au client | Oui | Le client reçoit les items liés aux produits |
 | Prendre les items dans l'inventaire du boulanger | Non | Le boulanger doit avoir les produits sur lui (stock réel) |
@@ -60,14 +64,21 @@ AAMenu → **Métier → Boulangerie**, ou à la caisse → **Gérer la boulange
    Pour une formule : **+ Ajouter une formule** → *Petit-déjeuner*.
 2. Le panier s'affiche avec le total. Sélectionner une ligne retire 1 article.
    **Appliquer une remise** si besoin, **Vider le panier** pour recommencer.
-3. Quand le client a fini : **Encaisser le client** → choisir le client à proximité →
-   **Envoyer l'addition**.
-4. Le client reçoit un **récapitulatif** (articles, remise, total, son argent liquide et son
-   solde bancaire) et choisit **Espèces**, **Carte bancaire** ou **Refuser**.
+3. Quand le client a fini : **Encaisser le client**, puis :
+   - choisir le client à proximité → **Au point de paiement** : le client est prévenu que sa
+     commande l'attend ;
+   - ou **Commande au comptoir (client non désigné)** : le premier client qui passe au point
+     de paiement la règle (pratique s'il est un peu loin) ;
+   - ou choisir le client → **Addition directe** : le récapitulatif s'ouvre tout de suite chez
+     le client, sans point de paiement.
+4. Le client marche dans le **point bleu de paiement** : il voit le **récapitulatif** (numéro
+   de commande, articles, remise, total, son argent liquide et son solde bancaire) et choisit
+   **Espèces** ou **Carte bancaire**. S'il y a plusieurs commandes au comptoir en attente,
+   il choisit la sienne.
 5. Paiement accepté : l'argent va dans le compte de l'entreprise (moins la commission), le
    client reçoit ses items, le ticket est enregistré et envoyé sur Discord.
 
-Tant que le client n'a pas payé, la caisse affiche « En attente du paiement » (sélectionner
+Tant que le client n'a pas payé, la caisse affiche la commande en attente (sélectionner
 pour annuler). « Mes ventes du jour » indique le nombre et le total de vos ventes.
 
 Les données sont dans la base ModKit (`Plugins/ModKit/data.sqlite`).

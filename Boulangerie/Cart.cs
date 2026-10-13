@@ -88,8 +88,13 @@ namespace Boulangerie
         public Cart Cart;
         public int CashierCharacterId;
         public uint CashierNetId;
+        public string CashierName;
+        /// <summary>0 = commande au comptoir, payable par le premier client au point de paiement.</summary>
         public uint ClientNetId;
         public string ClientName;
+        public int OrderNumber;
+        /// <summary>Vrai : le client paie au point de paiement ; faux : panel affiché directement.</summary>
+        public bool AtPoint;
         public DateTime ExpiresAt;
         public bool Done;
         public ModKit.Helper.Panel ClientPanel;

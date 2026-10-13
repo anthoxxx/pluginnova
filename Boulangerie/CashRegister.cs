@@ -46,9 +46,6 @@ namespace Boulangerie
 
         private static BakeryConfig Config => BoulangeriePlugin.Config;
 
-        /// <summary>Demandes de paiement en cours, par netId du client.</summary>
-        private static readonly Dictionary<uint, PaymentRequest> PendingByClient = new Dictionary<uint, PaymentRequest>();
-
         public CashRegister() { }
 
         public CashRegister(bool isCreated)
@@ -110,7 +107,7 @@ namespace Boulangerie
             if (cart.Pending != null)
             {
                 PaymentRequest req = cart.Pending;
-                panel.AddTabLine(Color($"En attente du paiement de {req.ClientName}", Colors.Warning) + "<br>" + Size("Sélectionner pour annuler la demande", 14),
+                panel.AddTabLine(Color(req.AtPoint ? $"Commande n°{req.OrderNumber} au point de paiement ({req.ClientName})" : $"En attente du paiement de {req.ClientName}", Colors.Warning) + "<br>" + Size("Sélectionner pour annuler la demande", 14),
                     Money(req.Cart.Total), none, _ =>
                     {
                         CancelRequest(req, "Le boulanger a annulé la demande de paiement.");
@@ -249,7 +246,7 @@ namespace Boulangerie
         //  Encaissement
         // ------------------------------------------------------------------
 
-        private static void ChooseClient(Player player, Cart cart)
+        private static async void ChooseClient(Player player, Cart cart)
         {
             if (cart.IsEmpty)
             {
@@ -257,6 +254,12 @@ namespace Boulangerie
                 OpenRegister(player, cart);
                 return;
             }
+
+            int bizId = cart.BizId;
+            List<PaymentPoint> points = await PaymentPoint.Query(p => p.BizId == bizId);
+            bool hasPoint = points.Count > 0;
+            // Par défaut : au point de paiement s'il en existe un, sinon addition directe
+            bool toPoint = hasPoint;
 
             List<Player> clients = Nova.server.GetPlayersInRange(Config.MaxClientDistance, player.setup.transform.position)
                 .Where(p => p != null && p.character != null && p.netId != player.netId)
@@ -267,6 +270,20 @@ namespace Boulangerie
             Panel panel = Plugin.PanelHelper.Create($"{cart.RegisterName} - Client", UIPanel.PanelType.Tab, player, () => ChooseClient(player, cart));
             panel.TextLines.Add($"Total : {Money(cart.Total)}");
 
+            if (hasPoint)
+                panel.AddTabLine(Color("Commande au comptoir (client non désigné)", Colors.Info) + "<br>" +
+                    Size("Le premier client qui passe au point de paiement la règle", 14), _ =>
+                {
+                    if (!toPoint)
+                    {
+                        player.Notify(Tag, "Une commande sans client désigné doit aller au point de paiement.", NotificationManager.Type.Warning, 5f);
+                        panel.Refresh();
+                        return;
+                    }
+                    SendPaymentRequest(player, null, cart, true, points[0].PatternName);
+                    OpenRegister(player, cart);
+                });
+
             if (clients.Count == 0)
                 panel.AddTabLine($"Aucun client à moins de {Config.MaxClientDistance:0.#} m (actualiser)", _ => panel.Refresh());
 
@@ -276,54 +293,87 @@ namespace Boulangerie
                 string label = c == player ? $"{c.FullName} (vous - test staff)" : c.FullName;
                 panel.AddTabLine(label, _ =>
                 {
-                    SendPaymentRequest(player, c, cart);
+                    SendPaymentRequest(player, c, cart, toPoint, hasPoint ? points[0].PatternName : null);
                     OpenRegister(player, cart);
                 });
             }
 
-            panel.NextButton("Envoyer l'addition", () => panel.SelectTab());
+            if (hasPoint)
+                panel.NextButton(Color("Au point de paiement", Colors.Success), () => { toPoint = true; panel.SelectTab(); });
+            panel.NextButton(hasPoint ? "Addition directe" : "Envoyer l'addition", () => { toPoint = false; panel.SelectTab(); });
             panel.PreviousButton("Panier");
             panel.CloseButton();
             panel.Display();
         }
 
-        private static void SendPaymentRequest(Player cashier, Player client, Cart cart)
+        /// <summary>Demandes de paiement en cours (directes ou au point de paiement).</summary>
+        internal static readonly List<PaymentRequest> Requests = new List<PaymentRequest>();
+
+        private static int _lastOrderNumber;
+
+        /// <summary>Demandes encore valables ; les demandes expirées sont retirées au passage.</summary>
+        internal static List<PaymentRequest> ActiveRequests()
+        {
+            foreach (PaymentRequest expired in Requests.Where(r => !r.Done && r.Expired).ToList())
+                Finish(expired);
+            Requests.RemoveAll(r => r.Done);
+            return Requests.ToList();
+        }
+
+        private static void SendPaymentRequest(Player cashier, Player client, Cart cart, bool atPoint, string pointName)
         {
             if (cart.Pending != null && !cart.Pending.Done && !cart.Pending.Expired)
             {
-                cashier.Notify(Tag, $"Une demande est déjà en attente ({cart.Pending.ClientName}).", NotificationManager.Type.Warning, 5f);
+                cashier.Notify(Tag, $"Une commande est déjà en attente ({cart.Pending.ClientName}).", NotificationManager.Type.Warning, 5f);
                 return;
             }
-            if (PendingByClient.TryGetValue(client.netId, out PaymentRequest other) && !other.Done && !other.Expired)
+            if (client != null && ActiveRequests().Any(r => r.ClientNetId == client.netId))
             {
                 cashier.Notify(Tag, $"{client.FullName} a déjà une addition en attente.", NotificationManager.Type.Warning, 5f);
                 return;
             }
 
+            int timeout = atPoint
+                ? (Config.PointOrderTimeout > 0 ? Config.PointOrderTimeout : 600)
+                : Math.Max(10, Config.PaymentTimeout);
+            int number = ++_lastOrderNumber;
             PaymentRequest req = new PaymentRequest
             {
                 Cart = cart.Snapshot(),
                 CashierCharacterId = cashier.character.Id,
                 CashierNetId = cashier.netId,
-                ClientNetId = client.netId,
-                ClientName = client.FullName,
-                ExpiresAt = DateTime.UtcNow.AddSeconds(Math.Max(10, Config.PaymentTimeout))
+                CashierName = cashier.FullName,
+                ClientNetId = client?.netId ?? 0,
+                ClientName = client?.FullName ?? $"Commande n°{number}",
+                OrderNumber = number,
+                AtPoint = atPoint,
+                ExpiresAt = DateTime.UtcNow.AddSeconds(timeout)
             };
             cart.Pending = req;
-            PendingByClient[client.netId] = req;
+            Requests.Add(req);
 
-            ShowPaymentPanel(client, req, cashier.FullName);
-            cashier.Notify(Tag, $"Addition de {Money(req.Cart.Total)} envoyée à {client.FullName}.", NotificationManager.Type.Info, 5f);
+            if (!atPoint)
+            {
+                ShowPaymentPanel(client, req);
+                cashier.Notify(Tag, $"Addition de {Money(req.Cart.Total)} envoyée à {client.FullName}.", NotificationManager.Type.Info, 5f);
+                return;
+            }
+
+            string where = string.IsNullOrWhiteSpace(pointName) ? "au point de paiement" : $"au point de paiement « {pointName} »";
+            client?.Notify(Tag, $"Votre commande n°{number} ({Money(req.Cart.Total)}) vous attend {where}.", NotificationManager.Type.Info, 8f);
+            cashier.Notify(Tag, $"Commande n°{number} ({Money(req.Cart.Total)}) envoyée {where}"
+                + (client != null ? $" pour {client.FullName}." : "."), NotificationManager.Type.Info, 6f);
         }
 
         /// <summary>Panel affiché au client : récapitulatif et choix du moyen de paiement.</summary>
-        private static void ShowPaymentPanel(Player client, PaymentRequest req, string cashierName)
+        internal static void ShowPaymentPanel(Player client, PaymentRequest req)
         {
             Cart c = req.Cart;
-            Panel panel = Plugin.PanelHelper.Create($"{c.RegisterName} - Addition", UIPanel.PanelType.Text, client, () => ShowPaymentPanel(client, req, cashierName));
+            string title = req.AtPoint ? $"{BoulangeriePlugin.BizName(c.BizId)} - Paiement" : $"{c.RegisterName} - Addition";
+            Panel panel = Plugin.PanelHelper.Create(title, UIPanel.PanelType.Text, client, () => ShowPaymentPanel(client, req));
 
-            panel.TextLines.Add(Bold(BoulangeriePlugin.BizName(c.BizId)));
-            panel.TextLines.Add(Color($"Servi par {cashierName}", Colors.Grey));
+            panel.TextLines.Add(Bold(BoulangeriePlugin.BizName(c.BizId)) + (req.AtPoint ? $" - Commande n°{req.OrderNumber}" : ""));
+            panel.TextLines.Add(Color($"Servi par {req.CashierName}", Colors.Grey));
             panel.TextLines.Add("");
             foreach (CartLine line in c.Lines)
                 panel.TextLines.Add($"{line.Quantity}x {(line.IsFormula ? "Formule " : "")}{line.Name} : {Money(line.Total)}");
@@ -338,11 +388,14 @@ namespace Boulangerie
 
             panel.CloseButtonWithAction(Color("Espèces", Colors.Success), async () => await Pay(client, req, true));
             panel.CloseButtonWithAction(Color("Carte bancaire", Colors.Info), async () => await Pay(client, req, false));
-            panel.CloseButtonWithAction(Color("Refuser", Colors.Error), () =>
-            {
-                Decline(client, req);
-                return Task.FromResult(true);
-            });
+            if (req.AtPoint && req.ClientNetId == 0)
+                panel.CloseButton("Ce n'est pas ma commande");
+            else
+                panel.CloseButtonWithAction(Color("Refuser", Colors.Error), () =>
+                {
+                    Decline(client, req);
+                    return Task.FromResult(true);
+                });
             req.ClientPanel = panel;
             panel.Display();
         }
@@ -360,16 +413,15 @@ namespace Boulangerie
             if (req.Done) return;
             Finish(req);
             req.ClientPanel?.Close();
-            Player client = BoulangeriePlugin.FindPlayer(req.ClientNetId);
-            client?.Notify(Tag, message, NotificationManager.Type.Info, 5f);
+            if (req.ClientNetId != 0)
+                BoulangeriePlugin.FindPlayer(req.ClientNetId)?.Notify(Tag, message, NotificationManager.Type.Info, 5f);
         }
 
         /// <summary>Clôt la demande et la détache du panier du boulanger.</summary>
         private static void Finish(PaymentRequest req)
         {
             req.Done = true;
-            if (PendingByClient.TryGetValue(req.ClientNetId, out PaymentRequest current) && current == req)
-                PendingByClient.Remove(req.ClientNetId);
+            Requests.Remove(req);
             if (Plugin.Carts.TryGetValue(req.CashierCharacterId, out Cart cart) && cart.Pending == req)
                 cart.Pending = null;
         }
@@ -391,6 +443,12 @@ namespace Boulangerie
                 return true;
             }
 
+            if (req.ClientNetId != 0 && req.ClientNetId != client.netId)
+            {
+                client.Notify(Tag, "Cette commande est réservée à un autre client.", NotificationManager.Type.Error, 5f);
+                return true;
+            }
+
             Cart c = req.Cart;
             double total = c.Total;
             string method = cash ? "Espèces" : "Carte bancaire";
@@ -408,6 +466,8 @@ namespace Boulangerie
 
             // Demande clôturée avant tout await : un double clic ne peut pas faire payer deux fois.
             Finish(req);
+            req.ClientNetId = client.netId;
+            req.ClientName = client.FullName;
 
             // Items à remettre au client
             Dictionary<int, int> items = Config.GiveItems ? await ItemsToGive(c) : new Dictionary<int, int>();
