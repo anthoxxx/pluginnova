@@ -52,7 +52,7 @@ Avec la gestion du stock activée, une nouvelle pompe a une citerne **vide** : l
 doit commander du carburant (ou le staff peut remplir la citerne depuis le menu de la pompe).
 
 ## Utilisation (employés)
-AAMenu → **Métier → Station-service** :
+AAMenu → **Métier → Station-service** (la ligne n'apparaît que pour les entreprises autorisées) :
 - **Pompes** : ouvrir/fermer, voir le prix et la citerne, commander du carburant (patron), GPS.
 - **Pleins à facturer** : pleins pas encore payés (si vous avez fermé la fenêtre, par exemple).
   « Offrir » supprime la facture.
@@ -70,3 +70,7 @@ Les données sont enregistrées dans la base ModKit (tables `GazConfig`, `GazPum
 - Le plugin met `fuelPrice` à 0 dans la config du serveur (en mémoire). Si vous retirez le
   plugin, vérifiez le prix de l'essence dans la config du serveur.
 - Les factures en attente sont gardées en mémoire : elles sont perdues au redémarrage du serveur.
+- AAMenu filtre le menu Métier par **activité**, pas par entreprise. La ligne « Station-service »
+  est donc affichée pour les activités des entreprises autorisées (ou leur activité personnalisée
+  ModKit). Une autre entreprise qui a exactement la même activité la voit aussi, mais elle ne peut
+  pas l'ouvrir. Une entreprise autorisée sans activité passe par `/gaz`.

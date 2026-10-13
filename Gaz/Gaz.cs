@@ -10,7 +10,9 @@ using Life.DB;
 using Life.Network;
 using Life.UI;
 using Life.VehicleSystem;
+using AAMenu.Classes;
 using Mirror;
+using ModKit.Helper.JobHelper;
 using ModKit.Helper;
 using ModKit.Interfaces;
 using Logger = ModKit.Internal.Logger;
@@ -47,6 +49,8 @@ namespace Gaz
 
         private bool _loaded;
         private bool _menuRegistered;
+        private bool _refreshingLines;
+        private readonly List<ModTabLines.ModTabLine> _bizLines = new List<ModTabLines.ModTabLine>();
         private Coroutine _loop;
 
         private List<GasStation> _stations = new List<GasStation>();
@@ -84,6 +88,8 @@ namespace Gaz
         {
             TryRegisterMenu();
             EnsureLoop();
+            // Suit les changements d'activité des entreprises
+            _ = RefreshBizLines();
         }
 
         private async Task LoadAsync()
@@ -104,6 +110,7 @@ namespace Gaz
                 Pumps.Clear();
                 Pumps.AddRange(await GazPump.QueryAll() ?? new List<GazPump>());
                 _loaded = true;
+                _ = RefreshBizLines();
                 _nextScan = 0f;
                 EnsureLoop();
                 Logger.LogSuccess(Title, $"{Pumps.Count} pompe(s) chargée(s)");
@@ -119,11 +126,69 @@ namespace Gaz
             if (_menuRegistered || AAMenu.AAMenu.menu == null) return;
             _menuRegistered = true;
 
-            // Activity.Type.None = visible par toutes les entreprises, le filtre est fait dans le menu
-            AAMenu.Menu.AddBizTabLine(PluginInformations, new List<Activity.Type> { Activity.Type.None }, null,
-                "Station-service", ui => EmployeeMenu(PanelHelper.ReturnPlayerFromPanel(ui)));
             AAMenu.Menu.AddAdminPluginTabLine(PluginInformations, 1, Title,
                 ui => AdminMenu(PanelHelper.ReturnPlayerFromPanel(ui)));
+            _ = RefreshBizLines();
+        }
+
+        /// <summary>
+        /// AAMenu ne filtre les lignes du menu Métier que par activité (ou activité personnalisée ModKit),
+        /// pas par entreprise. On crée donc la ligne « Station-service » uniquement pour les activités
+        /// des entreprises autorisées, et on la recrée quand la liste change.
+        /// </summary>
+        private async Task RefreshBizLines()
+        {
+            if (!_menuRegistered || AAMenu.AAMenu.menu == null || Config == null || _refreshingLines) return;
+            _refreshingLines = true;
+            try
+            {
+                HashSet<Activity.Type> types = new HashSet<Activity.Type>();
+                Dictionary<string, CustomActivity> customs = new Dictionary<string, CustomActivity>();
+                foreach (int bizId in Config.BizIdList)
+                {
+                    if (Nova.biz.FetchBiz(bizId) == null) continue;
+                    CustomBiz customBiz = (await CustomBiz.Query(c => c.BizId == bizId))?.FirstOrDefault();
+                    CustomActivity custom = customBiz != null ? await CustomActivity.Query(customBiz.CustomActivityId) : null;
+                    if (custom != null)
+                    {
+                        customs[custom.Name] = custom;
+                        continue;
+                    }
+                    Activity.Type type = Nova.biz.GetBizActivities(bizId).FirstOrDefault();
+                    // None rendrait la ligne visible pour tout le monde : ces entreprises passent par /gaz
+                    if (type != Activity.Type.None) types.Add(type);
+                }
+
+                List<ModTabLines.ModTabLine> lines = new List<ModTabLines.ModTabLine>();
+                if (types.Count > 0)
+                    lines.Add(NewBizLine(types.ToList(), null));
+                foreach (CustomActivity custom in customs.Values)
+                    lines.Add(NewBizLine(null, custom));
+
+                // BizPanel remplace la liste à chaque ouverture : toujours relire la propriété
+                AAMenu.AAMenu.menu.BizTabLines.RemoveAll(l => _bizLines.Contains(l));
+                AAMenu.AAMenu.menu.BizTabLines.AddRange(lines);
+                _bizLines.Clear();
+                _bizLines.AddRange(lines);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(Title, "Menu Métier : " + ex);
+            }
+            finally
+            {
+                _refreshingLines = false;
+            }
+        }
+
+        private ModTabLines.ModTabLine NewBizLine(List<Activity.Type> types, CustomActivity custom)
+        {
+            return new ModTabLines.ModTabLine(PluginInformations, "Station-service", ui => EmployeeMenu(PanelHelper.ReturnPlayerFromPanel(ui)))
+            {
+                ActivitiesAllowed = types,
+                CustomActivity = custom,
+                Index = 100,
+            };
         }
 
         private void RegisterCommands()
@@ -851,6 +916,7 @@ namespace Gaz
                     else ids.Add(biz.Id);
                     Config.BizIdList = ids;
                     await Config.Save();
+                    await RefreshBizLines();
                     panel.Refresh();
                 });
             }
