@@ -3,9 +3,9 @@
   <PropertyGroup>
     <TargetFramework>net472</TargetFramework>
     <LangVersion>11.0</LangVersion>
-    <AssemblyName>Gaz</AssemblyName>
-    <RootNamespace>Gaz</RootNamespace>
-    <Version>1.0.0</Version>
+    <AssemblyName>Exo</AssemblyName>
+    <RootNamespace>Exo</RootNamespace>
+    <Version>1.1.0</Version>
     <Authors>Loris Strange</Authors>
     <!-- Dossier contenant TOUTES les DLL nécessaires (voir libs/README.md) -->
     <LibsPath Condition="'$(LibsPath)' == ''">$(MSBuildThisFileDirectory)libs</LibsPath>

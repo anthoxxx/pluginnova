@@ -14,6 +14,8 @@ using AAMenu.Classes;
 using Mirror;
 using ModKit.Helper.JobHelper;
 using ModKit.Helper;
+using ModKit.Helper.DiscordHelper;
+using ModKit.Helper.PointHelper;
 using ModKit.Interfaces;
 using Logger = ModKit.Internal.Logger;
 using ModKit.ORM;
@@ -22,15 +24,15 @@ using SQLite;
 using UnityEngine;
 using static ModKit.Helper.TextFormattingHelper;
 
-namespace Gaz
+namespace Exo
 {
     /// <summary>
-    /// Gaz By Loris Strange : les pompes à essence du jeu sont bloquées, seules les
+    /// EXO By Loris Strange : les pompes à essence du jeu sont bloquées, seules les
     /// entreprises autorisées peuvent servir de l'essence et facturer les clients.
     /// </summary>
-    public class GazPlugin : ModKit.ModKit
+    public class ExoPlugin : ModKit.ModKit
     {
-        public const string Title = "Gaz By Loris Strange";
+        public const string Title = "EXO By Loris Strange";
 
         /// <summary>Distance max entre l'employé et la pompe pour qu'il puisse s'en servir.</summary>
         private const float EmployeeRange = 4f;
@@ -44,8 +46,8 @@ namespace Gaz
         private static readonly Dictionary<int, int> Jerrycans = new Dictionary<int, int> { { 1564, 1183 }, { 1591, 1590 } };
         private const int JerrycanLiters = 15;
 
-        public GazConfig Config { get; private set; }
-        public List<GazPump> Pumps { get; } = new List<GazPump>();
+        public ExoConfig Config { get; private set; }
+        public List<ExoPump> Pumps { get; } = new List<ExoPump>();
 
         private bool _loaded;
         private bool _menuRegistered;
@@ -54,21 +56,35 @@ namespace Gaz
         private Coroutine _loop;
 
         private List<GasStation> _stations = new List<GasStation>();
-        private readonly Dictionary<uint, GazPump> _links = new Dictionary<uint, GazPump>();
+        private readonly Dictionary<uint, ExoPump> _links = new Dictionary<uint, ExoPump>();
         private float _nextScan;
 
         private readonly Dictionary<(uint station, int slot), FillSession> _sessions = new Dictionary<(uint, int), FillSession>();
         private readonly Dictionary<int, List<PendingBill>> _bills = new Dictionary<int, List<PendingBill>>();
         private readonly Dictionary<uint, float> _lastBlockNotify = new Dictionary<uint, float>();
 
-        public GazPlugin(IGameAPI api) : base(api)
+        /// <summary>Personnages en service (prise de service dans le menu Métier).</summary>
+        private readonly HashSet<int> _onDuty = new HashSet<int>();
+        /// <summary>Paiements d'avance à l'automate, par pompe.</summary>
+        private readonly Dictionary<int, Prepay> _prepays = new Dictionary<int, Prepay>();
+        private float _nextPrepayCheck;
+        private readonly ExoAutomatePattern _automatePattern = new ExoAutomatePattern();
+
+        /// <summary>Durée pendant laquelle une pompe payée à l'automate reste débloquée.</summary>
+        private const float PrepayDuration = 300f;
+
+        public static ExoPlugin Instance { get; private set; }
+
+        public ExoPlugin(IGameAPI api) : base(api)
         {
-            PluginInformations = new PluginInformations(AssemblyHelper.GetName(), "1.0.0", "Loris Strange");
+            PluginInformations = new PluginInformations(AssemblyHelper.GetName(), "1.1.0", "Loris Strange");
+            Instance = this;
         }
 
         public override void OnPluginInit()
         {
             base.OnPluginInit();
+            PointHelper.AddPattern(nameof(ExoAutomatePattern), _automatePattern);
             _ = LoadAsync();
             TryRegisterMenu();
             RegisterCommands();
@@ -80,6 +96,9 @@ namespace Gaz
         public override void OnPlayerSpawnCharacter(Player player, NetworkConnection conn, Characters character)
         {
             base.OnPlayerSpawnCharacter(player, conn, character);
+            // Une reconnexion termine le service
+            if (character != null) _onDuty.Remove(character.Id);
+            PointHelper.InitAllNPoint(player);
             TryRegisterMenu();
             EnsureLoop();
         }
@@ -96,19 +115,20 @@ namespace Gaz
         {
             try
             {
-                await Orm.SqliteConnection.CreateTableAsync<GazConfig>();
-                await Orm.SqliteConnection.CreateTableAsync<GazPump>();
-                await Orm.SqliteConnection.CreateTableAsync<GazSale>();
+                await Orm.SqliteConnection.CreateTableAsync<ExoConfig>();
+                await Orm.SqliteConnection.CreateTableAsync<ExoPump>();
+                await Orm.SqliteConnection.CreateTableAsync<ExoSale>();
+                await Orm.SqliteConnection.CreateTableAsync<ExoAutomatePattern>();
 
-                Config = (await GazConfig.QueryAll())?.FirstOrDefault();
+                Config = (await ExoConfig.QueryAll())?.FirstOrDefault();
                 if (Config == null)
                 {
-                    Config = new GazConfig();
+                    Config = new ExoConfig();
                     await Config.Save();
                 }
 
                 Pumps.Clear();
-                Pumps.AddRange(await GazPump.QueryAll() ?? new List<GazPump>());
+                Pumps.AddRange(await ExoPump.QueryAll() ?? new List<ExoPump>());
                 _loaded = true;
                 _ = RefreshBizLines();
                 _nextScan = 0f;
@@ -128,6 +148,8 @@ namespace Gaz
 
             AAMenu.Menu.AddAdminPluginTabLine(PluginInformations, 1, Title,
                 ui => AdminMenu(PanelHelper.ReturnPlayerFromPanel(ui)));
+            // Administration > Points bleus > Automate essence
+            AAMenu.AAMenu.menu.AddBuilder(PluginInformations, "Automate essence", _automatePattern, this);
             _ = RefreshBizLines();
         }
 
@@ -155,7 +177,7 @@ namespace Gaz
                         continue;
                     }
                     Activity.Type type = Nova.biz.GetBizActivities(bizId).FirstOrDefault();
-                    // None rendrait la ligne visible pour tout le monde : ces entreprises passent par /gaz
+                    // None rendrait la ligne visible pour tout le monde : ces entreprises passent par /exo
                     if (type != Activity.Type.None) types.Add(type);
                 }
 
@@ -194,11 +216,26 @@ namespace Gaz
         private void RegisterCommands()
         {
             // Secours si AAMenu n'est pas installé
-            new SChatCommand("/gaz", "Station-service (" + Title + ")", "/gaz",
+            new SChatCommand("/exo", "Station-service (" + Title + ")", "/exo",
                 (Action<Player, string[]>)((player, args) =>
                 {
                     if (player.IsAdmin && player.serviceAdmin) AdminMenu(player);
                     else EmployeeMenu(player);
+                })).Register();
+
+            new SChatCommand("/exowebhook", "Définir le webhook Discord de " + Title, "/exowebhook <url | 0>",
+                (Action<Player, string[]>)(async (player, args) =>
+                {
+                    if (!CheckAdmin(player) || Config == null) return;
+                    if (args.Length == 0)
+                    {
+                        player.Notify(Title, "Utilisation : /exowebhook <url> (ou 0 pour retirer)", NotificationManager.Type.Info, 6f);
+                        return;
+                    }
+                    Config.WebhookUrl = args[0] == "0" ? "" : args[0].Trim();
+                    await Config.Save();
+                    player.Notify(Title, HasWebhook ? "Webhook enregistré." : "Webhook retiré.", NotificationManager.Type.Success, 5f);
+                    if (HasWebhook) Log("✅ Webhook configuré", "#3fd2ff", $"Configuré par {player.FullName}.", ("Pompes", Pumps.Count.ToString()));
                 })).Register();
         }
 
@@ -245,6 +282,12 @@ namespace Gaz
                 CheckSlot(station, 1);
                 CheckSlot(station, 2);
             }
+
+            if (Time.realtimeSinceStartup >= _nextPrepayCheck)
+            {
+                _nextPrepayCheck = Time.realtimeSinceStartup + 1f;
+                ExpirePrepays();
+            }
         }
 
         /// <summary>
@@ -270,7 +313,7 @@ namespace Gaz
             {
                 if (station == null) continue;
                 Vector3 pos = station.transform.position;
-                GazPump pump = Pumps
+                ExoPump pump = Pumps
                     .Where(p => Vector3.Distance(p.Position, pos) <= LinkRange)
                     .OrderBy(p => Vector3.Distance(p.Position, pos))
                     .FirstOrDefault();
@@ -297,24 +340,45 @@ namespace Gaz
 
             if (session == null)
             {
-                _links.TryGetValue(station.netId, out GazPump pump);
+                _links.TryGetValue(station.netId, out ExoPump pump);
                 Player employee = FindEmployee(station, pump, out string reason);
-                if (employee == null)
+                Prepay prepay = employee == null ? FindPrepay(station, pump) : null;
+                if (employee == null && prepay == null)
                 {
                     Block(station, slot, vehicle, delivered, reason);
                     return;
                 }
 
-                session = new FillSession
+                if (employee != null)
                 {
-                    Pump = pump,
-                    EmployeeCharacterId = employee.character.Id,
-                    BizId = employee.character.BizId,
-                    VehicleNetId = attached,
-                    IsElectric = station.isElectric,
-                };
+                    session = new FillSession
+                    {
+                        Pump = pump,
+                        EmployeeCharacterId = employee.character.Id,
+                        BizId = employee.character.BizId,
+                        VehicleNetId = attached,
+                        IsElectric = station.isElectric,
+                    };
+                    employee.Notify("Station-service", $"Remplissage démarré ({pump.Label}) - {Money(PriceOf(pump))}/L", NotificationManager.Type.Info, 5f);
+                }
+                else
+                {
+                    // Pompe payée d'avance à l'automate
+                    prepay.InUse = true;
+                    session = new FillSession
+                    {
+                        Pump = pump,
+                        EmployeeCharacterId = prepay.CharacterId,
+                        BizId = prepay.BizId,
+                        VehicleNetId = attached,
+                        IsElectric = station.isElectric,
+                        Prepay = prepay,
+                        MaxLiters = prepay.MaxLiters,
+                    };
+                    PlayerByCharacter(prepay.CharacterId)?.Notify("Automate",
+                        $"Remplissage en cours : {prepay.MaxLiters} L maximum ({Money(prepay.Amount)}).", NotificationManager.Type.Info, 5f);
+                }
                 _sessions[key] = session;
-                employee.Notify("Station-service", $"Remplissage démarré ({pump.Label}) - {Money(PriceOf(pump))}/L", NotificationManager.Type.Info, 5f);
             }
 
             if (session.IsElectric)
@@ -331,6 +395,18 @@ namespace Gaz
                 session.Liters = Math.Max(session.Liters, delivered);
             }
 
+            if (session.MaxLiters > 0 && session.Liters >= session.MaxLiters)
+            {
+                // Montant payé à l'automate atteint : on raccroche
+                session.Liters = session.MaxLiters;
+                Detach(station, slot, vehicle);
+                _sessions.Remove(key);
+                PlayerByCharacter(session.EmployeeCharacterId)?.Notify("Automate",
+                    "Montant atteint : le pistolet a été raccroché.", NotificationManager.Type.Success, 6f);
+                EndSession(session);
+                return;
+            }
+
             if (Config.StockActif && session.Liters >= session.Pump.Stock)
             {
                 session.Liters = Math.Min(session.Liters, Math.Max(session.Pump.Stock, 0));
@@ -343,7 +419,7 @@ namespace Gaz
         }
 
         /// <summary>Employé autorisé le plus proche de la pompe, ou null avec la raison du refus.</summary>
-        private Player FindEmployee(GasStation station, GazPump pump, out string reason)
+        private Player FindEmployee(GasStation station, ExoPump pump, out string reason)
         {
             reason = null;
             if (pump == null)
@@ -363,9 +439,17 @@ namespace Gaz
             }
 
             Vector3 pos = station.transform.position;
-            Player employee = PlayersNear(pos, EmployeeRange).FirstOrDefault(p => IsAllowedAt(p, pump));
+            List<Player> near = PlayersNear(pos, EmployeeRange).ToList();
+            Player employee = near.FirstOrDefault(p => IsAllowedAt(p, pump) && IsOnDuty(p));
             if (employee == null)
-                reason = $"Seul le personnel de {AllowedBizNames(pump)} peut servir de l'essence ici.";
+            {
+                if (near.Any(p => IsAllowedAt(p, pump)))
+                    reason = "Prenez votre service (Métier → Station-service) pour servir de l'essence.";
+                else if (!Config.AutomateDesactive && !StationStaffed(pump.StationName))
+                    reason = "Aucun employé en service : payez votre essence à l'automate (point bleu) de la station.";
+                else
+                    reason = $"Seul le personnel de {AllowedBizNames(pump)} peut servir de l'essence ici.";
+            }
             return employee;
         }
 
@@ -402,9 +486,16 @@ namespace Gaz
 
         private void EndSession(FillSession session)
         {
+            if (session.Prepay != null)
+            {
+                // Pistolet raccroché sans essence : la pompe reste payée
+                if (session.Liters <= 0) session.Prepay.InUse = false;
+                else EndSelfService(session);
+                return;
+            }
             if (session.Liters <= 0) return;
 
-            GazPump pump = session.Pump;
+            ExoPump pump = session.Pump;
             if (Config.StockActif)
             {
                 pump.Stock = Math.Max(0, pump.Stock - session.Liters);
@@ -421,7 +512,7 @@ namespace Gaz
             }
         }
 
-        private PendingBill AddPendingBill(int employeeId, int bizId, GazPump pump, int liters)
+        private PendingBill AddPendingBill(int employeeId, int bizId, ExoPump pump, int liters)
         {
             PendingBill bill = new PendingBill
             {
@@ -454,12 +545,13 @@ namespace Gaz
             yield return null;
             if (player?.setup == null || station == null) yield break;
 
-            _links.TryGetValue(station.netId, out GazPump pump);
+            _links.TryGetValue(station.netId, out ExoPump pump);
             int liters = JerrycanLiters * count;
             string reason = null;
             if (pump == null) reason = "Cette pompe est hors service.";
             else if (!pump.Ouverte) reason = $"{pump.Label} est fermée.";
             else if (!IsAllowedAt(player, pump)) reason = $"Seul le personnel de {AllowedBizNames(pump)} peut remplir des jerricans ici.";
+            else if (!IsOnDuty(player)) reason = "Prenez votre service pour remplir des jerricans.";
             else if (Config.StockActif && pump.Stock < liters) reason = $"Pas assez de carburant dans la citerne de {pump.Label}.";
 
             if (reason != null)
@@ -480,21 +572,448 @@ namespace Gaz
         }
 
         // ==================================================================
+        //  Prise de service
+        // ==================================================================
+
+        public bool IsOnDuty(Player player) => player?.character != null && _onDuty.Contains(player.character.Id);
+
+        private void SetDuty(Player player, bool onDuty)
+        {
+            if (onDuty) _onDuty.Add(player.character.Id);
+            else _onDuty.Remove(player.character.Id);
+            player.Notify("Station-service", onDuty ? "Vous avez pris votre service." : "Vous avez terminé votre service.",
+                onDuty ? NotificationManager.Type.Success : NotificationManager.Type.Info, 5f);
+            Log(onDuty ? "🟢 Prise de service" : "🔴 Fin de service", onDuty ? "#3ddc84" : "#ff4d5e",
+                $"{player.FullName} {(onDuty ? "a pris" : "a terminé")} son service.", ("Entreprise", BizName(player.character.BizId)));
+        }
+
+        /// <summary>Un employé autorisé est-il en service pour au moins une pompe de cette station ?</summary>
+        public bool StationStaffed(string stationName)
+        {
+            List<ExoPump> pumps = Pumps.Where(p => p.StationName == stationName).ToList();
+            return Nova.server.GetAllInGamePlayers().Any(pl => pl?.character != null && IsOnDuty(pl) && pumps.Any(pp => IsAllowedAt(pl, pp)));
+        }
+
+        // ==================================================================
+        //  Automate (point bleu) : paiement d'avance quand personne n'est en service
+        // ==================================================================
+
+        private Prepay FindPrepay(GasStation station, ExoPump pump)
+        {
+            if (pump == null || !pump.Ouverte || (Config.StockActif && pump.Stock <= 0)) return null;
+            if (!_prepays.TryGetValue(pump.Id, out Prepay prepay)) return null;
+            Player buyer = PlayerByCharacter(prepay.CharacterId);
+            if (buyer?.setup == null || Vector3.Distance(buyer.setup.transform.position, station.transform.position) > EmployeeRange)
+                return null;
+            return prepay;
+        }
+
+        private void ExpirePrepays()
+        {
+            float now = Time.realtimeSinceStartup;
+            foreach (Prepay prepay in _prepays.Values.Where(p => !p.InUse && now > p.Expires).ToList())
+            {
+                _prepays.Remove(prepay.PumpId);
+                Player buyer = PlayerByCharacter(prepay.CharacterId);
+                RefundPrepay(prepay, buyer, prepay.Amount);
+                buyer?.Notify("Automate", $"Temps écoulé : {prepay.PumpLabel} est de nouveau bloquée. Vous avez été remboursé ({Money(prepay.Amount)}).", NotificationManager.Type.Warning, 7f);
+                Log("⌛ Automate : temps écoulé", "#ffc93c", $"{prepay.ClientName} n'a pas utilisé la pompe payée.",
+                    ("Pompe", prepay.PumpLabel), ("Remboursé", Money(prepay.Amount)));
+            }
+        }
+
+        private static void RefundPrepay(Prepay prepay, Player buyer, double amount)
+        {
+            if (buyer == null || amount < 0.01) return;
+            if (prepay.Cash) buyer.AddMoney(amount, "Remboursement automate essence");
+            else buyer.AddBankMoney(amount, "Remboursement automate essence");
+        }
+
+        private void EndSelfService(FillSession session)
+        {
+            Prepay prepay = session.Prepay;
+            _prepays.Remove(prepay.PumpId);
+            ExoPump pump = session.Pump;
+
+            int liters = Math.Min(session.Liters, prepay.MaxLiters);
+            double cost = Math.Min(prepay.Amount, Math.Round(liters * prepay.PricePerLiter, 2));
+            double refund = Math.Round(prepay.Amount - cost, 2);
+            Player buyer = PlayerByCharacter(prepay.CharacterId);
+            RefundPrepay(prepay, buyer, refund);
+
+            if (Config.StockActif) pump.Stock = Math.Max(0, pump.Stock - liters);
+            pump.LitresVendus += liters;
+            pump.ChiffreAffaires += cost;
+            _ = pump.Save();
+            Nova.biz.FetchBiz(prepay.BizId)?.AddBankMoney(cost, $"Automate : {liters} L ({pump.Label})");
+            _ = new ExoSale
+            {
+                PumpId = pump.Id,
+                PumpLabel = pump.Label,
+                BizId = prepay.BizId,
+                EmployeeName = "Automate",
+                ClientName = prepay.ClientName,
+                Litres = liters,
+                Montant = cost,
+                Date = Nova.UnixTimeNow(),
+            }.Save();
+
+            buyer?.Notify("Automate", $"{liters} L pour {Money(cost)}." + (refund >= 0.01 ? $" {Money(refund)} vous ont été rendus." : "") + " Bonne route !",
+                NotificationManager.Type.Success, 7f);
+            Log("🤖 Automate : plein terminé", "#3ddc84", $"{prepay.ClientName} s'est servi à l'automate.",
+                ("Pompe", pump.Label), ("Litres", $"{liters} L"), ("Payé", Money(cost)), ("Rendu", Money(refund)),
+                ("Paiement", prepay.Cash ? "Espèces" : "Carte"), ("Entreprise", prepay.BizId > 0 ? BizName(prepay.BizId) : "aucune"));
+        }
+
+        /// <summary>Menu affiché quand un joueur entre dans le point bleu de l'automate.</summary>
+        public void AutomateMenu(Player player, string stationName)
+        {
+            if (player?.setup == null || !_loaded) return;
+
+            // Station de l'automate : celle du modèle si une de ses pompes est proche, sinon la plus proche
+            Vector3 pos = player.setup.transform.position;
+            ExoPump nearest = Pumps.Where(p => Vector3.Distance(p.Position, pos) <= 100f)
+                .OrderBy(p => p.StationName == stationName ? 0 : 1).ThenBy(p => Vector3.Distance(p.Position, pos)).FirstOrDefault();
+            if (nearest == null)
+            {
+                player.Notify("Automate", "Aucune pompe configurée près de cet automate.", NotificationManager.Type.Error, 5f);
+                return;
+            }
+            stationName = nearest.StationName;
+
+            Prepay mine = _prepays.Values.FirstOrDefault(p => p.CharacterId == player.character.Id);
+            if (mine != null)
+            {
+                AutomateCurrent(player, mine);
+                return;
+            }
+            if (Config.AutomateDesactive)
+            {
+                player.Notify("Automate", "L'automate est hors service.", NotificationManager.Type.Error, 5f);
+                return;
+            }
+            if (StationStaffed(stationName))
+            {
+                player.Notify("Automate", "Un employé est en service : adressez-vous au personnel de la station.", NotificationManager.Type.Info, 6f);
+                return;
+            }
+
+            List<ExoPump> pumps = Pumps.Where(p => p.StationName == stationName).OrderBy(p => p.PumpName).ToList();
+            Panel panel = PanelHelper.Create($"Automate - {stationName}", UIPanel.PanelType.TabPrice, player, () => AutomateMenu(player, stationName));
+            foreach (ExoPump pump in pumps)
+            {
+                string state = AutomatePumpState(pump, out bool usable);
+                panel.AddTabLine($"{pump.PumpName} - {Money(PriceOf(pump))}/L", state, IconUtils.Others.None.Id, _ =>
+                {
+                    if (!usable)
+                    {
+                        player.Notify("Automate", $"{pump.PumpName} : {Nova.RemoveTextFormat(state)}.", NotificationManager.Type.Error, 5f);
+                        return;
+                    }
+                    AutomateAmounts(player, pump);
+                });
+            }
+            panel.AddButton("Choisir", _ => panel.SelectTab());
+            panel.CloseButton();
+            panel.Display();
+        }
+
+        private string AutomatePumpState(ExoPump pump, out bool usable)
+        {
+            usable = false;
+            if (!pump.Ouverte) return Color("Fermée", Colors.Error);
+            if (Config.StockActif && pump.Stock <= 0) return Color("Citerne vide", Colors.Error);
+            if (_prepays.ContainsKey(pump.Id)) return Color("Occupée", Colors.Warning);
+            usable = true;
+            return Color("Libre", Colors.Success);
+        }
+
+        private void AutomateAmounts(Player player, ExoPump pump)
+        {
+            double price = PriceOf(pump);
+            Panel panel = PanelHelper.Create($"Automate - {pump.PumpName}", UIPanel.PanelType.TabPrice, player, () => AutomateAmounts(player, pump));
+            foreach (double amount in Config.MontantsList)
+            {
+                int liters = price > 0 ? (int)Math.Floor(amount / price) : 0;
+                if (liters <= 0) continue;
+                bool enough = !Config.StockActif || liters <= pump.Stock;
+                panel.AddTabLine($"{amount:0.##} € d'essence", enough ? $"{liters} L" : Color("stock insuffisant", Colors.Grey), IconUtils.Others.None.Id, _ =>
+                {
+                    if (!enough)
+                    {
+                        player.Notify("Automate", "Pas assez de carburant dans la citerne pour ce montant.", NotificationManager.Type.Error, 5f);
+                        return;
+                    }
+                    AutomatePay(player, pump, amount);
+                });
+            }
+            panel.AddButton("Choisir", _ => panel.SelectTab());
+            panel.PreviousButton();
+            panel.CloseButton();
+            panel.Display();
+        }
+
+        private void AutomatePay(Player player, ExoPump pump, double amount)
+        {
+            double price = PriceOf(pump);
+            int liters = (int)Math.Floor(amount / price);
+            Panel panel = PanelHelper.Create("Automate - Paiement", UIPanel.PanelType.Text, player, () => AutomatePay(player, pump, amount));
+            panel.TextLines.Add($"{Color(pump.Label, Colors.Info)}");
+            panel.TextLines.Add($"Montant : {Color(Money(amount), Colors.Warning)} ({liters} L à {Money(price)}/L)");
+            panel.TextLines.Add($"La pompe est débloquée pendant {PrepayDuration / 60:0} minutes.");
+            panel.TextLines.Add("Elle se bloque dès que le montant est atteint. Ce qui n'est pas utilisé vous est rendu.");
+            panel.CloseButtonWithAction("Payer en espèces", () => Task.FromResult(DoPrepay(player, pump, amount, true)));
+            panel.CloseButtonWithAction("Payer par carte", () => Task.FromResult(DoPrepay(player, pump, amount, false)));
+            panel.PreviousButton();
+            panel.Display();
+        }
+
+        private bool DoPrepay(Player player, ExoPump pump, double amount, bool cash)
+        {
+            if (StationStaffed(pump.StationName))
+            {
+                player.Notify("Automate", "Un employé vient de prendre son service : adressez-vous à lui.", NotificationManager.Type.Info, 6f);
+                return true;
+            }
+            AutomatePumpState(pump, out bool usable);
+            if (!usable || _prepays.Values.Any(p => p.CharacterId == player.character.Id))
+            {
+                player.Notify("Automate", "Cette pompe n'est plus disponible.", NotificationManager.Type.Error, 5f);
+                return true;
+            }
+            double price = PriceOf(pump);
+            int liters = (int)Math.Floor(amount / price);
+            if (liters <= 0 || (Config.StockActif && liters > pump.Stock))
+            {
+                player.Notify("Automate", "Pas assez de carburant dans la citerne pour ce montant.", NotificationManager.Type.Error, 5f);
+                return true;
+            }
+            if ((cash ? player.Money : player.Bank) < amount)
+            {
+                player.Notify("Automate", cash ? "Vous n'avez pas assez d'espèces." : "Vous n'avez pas assez d'argent en banque.", NotificationManager.Type.Error, 5f);
+                return false;
+            }
+
+            if (cash) player.AddMoney(-amount, "Automate essence");
+            else player.AddBankMoney(-amount, "Automate essence");
+
+            Prepay prepay = new Prepay
+            {
+                PumpId = pump.Id,
+                PumpLabel = pump.Label,
+                CharacterId = player.character.Id,
+                ClientName = player.FullName,
+                Amount = amount,
+                PricePerLiter = price,
+                MaxLiters = liters,
+                Cash = cash,
+                BizId = pump.BizId != 0 ? pump.BizId : Config.BizIdList.FirstOrDefault(),
+                Expires = Time.realtimeSinceStartup + PrepayDuration,
+            };
+            _prepays[pump.Id] = prepay;
+
+            player.Notify("Automate", $"{pump.PumpName} débloquée : {liters} L maximum. Branchez le pistolet sur votre véhicule.", NotificationManager.Type.Success, 8f);
+            player.setup.TargetSetGPSTarget(pump.Position);
+            Log("🤖 Automate : paiement", "#3fd2ff", $"{player.FullName} a payé à l'automate.",
+                ("Pompe", pump.Label), ("Montant", Money(amount)), ("Litres max", $"{liters} L"), ("Paiement", cash ? "Espèces" : "Carte"));
+            return true;
+        }
+
+        /// <summary>Le joueur a déjà payé : rappel et annulation possible.</summary>
+        private void AutomateCurrent(Player player, Prepay prepay)
+        {
+            int left = Mathf.Max(0, Mathf.CeilToInt(prepay.Expires - Time.realtimeSinceStartup));
+            Panel panel = PanelHelper.Create("Automate - Votre paiement", UIPanel.PanelType.Text, player, () => AutomateCurrent(player, prepay));
+            panel.TextLines.Add($"{Color(prepay.PumpLabel, Colors.Info)} est débloquée pour vous.");
+            panel.TextLines.Add($"Payé : {Money(prepay.Amount)} ({prepay.MaxLiters} L maximum)");
+            panel.TextLines.Add(prepay.InUse ? "Remplissage en cours…" : $"Temps restant : {left / 60} min {left % 60:00} s");
+            if (!prepay.InUse)
+                panel.CloseButtonWithAction(Color("Annuler et être remboursé", Colors.Error), () =>
+                {
+                    if (_prepays.TryGetValue(prepay.PumpId, out Prepay current) && current == prepay && !prepay.InUse)
+                    {
+                        _prepays.Remove(prepay.PumpId);
+                        RefundPrepay(prepay, player, prepay.Amount);
+                        player.Notify("Automate", $"Paiement annulé, {Money(prepay.Amount)} remboursés.", NotificationManager.Type.Info, 5f);
+                        Log("↩️ Automate : annulation", "#ffc93c", $"{prepay.ClientName} a annulé son paiement.",
+                            ("Pompe", prepay.PumpLabel), ("Remboursé", Money(prepay.Amount)));
+                    }
+                    return Task.FromResult(true);
+                });
+            panel.CloseButton();
+            panel.Display();
+        }
+
+        // ------------------------------------------------------------------
+        //  Automate : gestion staff (AAMenu > Points bleus > Automate essence)
+        // ------------------------------------------------------------------
+
+        public async void AutomateAdmin(Player player)
+        {
+            if (!CheckAdmin(player)) return;
+            List<ExoAutomatePattern> patterns = await ExoAutomatePattern.QueryAll() ?? new List<ExoAutomatePattern>();
+
+            Panel panel = PanelHelper.Create("Automates - Placer un point", UIPanel.PanelType.Tab, player, () => AutomateAdmin(player));
+            if (patterns.Count == 0)
+                panel.AddTabLine("Aucun automate : créez-en un", _ => { });
+            foreach (ExoAutomatePattern pattern in patterns)
+            {
+                panel.AddTabLine($"[{pattern.Id}] {pattern.PatternName}", async _ =>
+                {
+                    pattern.TypeName = nameof(ExoAutomatePattern);
+                    pattern.Context = this;
+                    if (await PointHelper.CreateNPoint(player, pattern))
+                        player.Notify(Title, $"Point bleu « {pattern.PatternName} » placé à votre position.", NotificationManager.Type.Success, 5f);
+                });
+            }
+            if (patterns.Count > 0)
+                panel.AddButton("Placer ici", _ => panel.SelectTab());
+            panel.NextButton("Nouvel automate", () => AutomateNew(player));
+            panel.NextButton("Automates", async () => await AutomateModels(player));
+            panel.NextButton("Points placés", async () => await AutomatePoints(player));
+            panel.CloseButton();
+            panel.Display();
+        }
+
+        public void AutomateNew(Player player)
+        {
+            if (!CheckAdmin(player)) return;
+            List<string> stations = Pumps.Select(p => p.StationName).Where(n => !string.IsNullOrEmpty(n)).Distinct().OrderBy(n => n).ToList();
+
+            Panel panel = PanelHelper.Create("Nouvel automate - Station", UIPanel.PanelType.Tab, player, () => AutomateNew(player));
+            if (stations.Count == 0)
+                panel.AddTabLine("Configurez d'abord des pompes", _ => { });
+            foreach (string station in stations)
+            {
+                panel.AddTabLine(station, async _ =>
+                {
+                    ExoAutomatePattern pattern = new ExoAutomatePattern { PatternName = $"Automate {station}", StationName = station };
+                    if (await pattern.Save())
+                    {
+                        player.Notify(Title, $"« {pattern.PatternName} » créé. Choisissez-le puis « Placer ici ».", NotificationManager.Type.Success, 6f);
+                        panel.Previous();
+                    }
+                });
+            }
+            panel.AddButton("Créer", _ => panel.SelectTab());
+            panel.PreviousButton();
+            panel.CloseButton();
+            panel.Display();
+        }
+
+        public async Task AutomateModels(Player player)
+        {
+            if (!CheckAdmin(player)) return;
+            List<ExoAutomatePattern> patterns = await ExoAutomatePattern.QueryAll() ?? new List<ExoAutomatePattern>();
+
+            Panel panel = PanelHelper.Create("Automates", UIPanel.PanelType.Tab, player, async () => await AutomateModels(player));
+            if (patterns.Count == 0)
+                panel.AddTabLine("Aucun automate", _ => { });
+            foreach (ExoAutomatePattern pattern in patterns)
+            {
+                panel.AddTabLine($"[{pattern.Id}] {pattern.PatternName}", async _ =>
+                {
+                    pattern.TypeName = nameof(ExoAutomatePattern);
+                    pattern.Context = this;
+                    await PointHelper.DeleteNPointsByPattern(player, pattern);
+                    if (await pattern.Delete())
+                        player.Notify(Title, $"« {pattern.PatternName} » et ses points supprimés (visible après reconnexion).", NotificationManager.Type.Success, 6f);
+                    panel.Refresh();
+                });
+            }
+            if (patterns.Count > 0)
+                panel.AddButton(Color("Supprimer", Colors.Error), _ => panel.SelectTab());
+            panel.PreviousButton();
+            panel.CloseButton();
+            panel.Display();
+        }
+
+        public async Task AutomatePoints(Player player)
+        {
+            if (!CheckAdmin(player)) return;
+            List<NPoint> points = await NPoint.Query(p => p.TypeName == nameof(ExoAutomatePattern)) ?? new List<NPoint>();
+            Dictionary<int, string> names = (await ExoAutomatePattern.QueryAll() ?? new List<ExoAutomatePattern>()).ToDictionary(p => p.Id, p => p.PatternName);
+            string action = "";
+
+            Panel panel = PanelHelper.Create("Automates - Points placés", UIPanel.PanelType.Tab, player, async () => await AutomatePoints(player));
+            if (points.Count == 0)
+                panel.AddTabLine("Aucun point placé", _ => { });
+            foreach (NPoint point in points)
+            {
+                string name = names.TryGetValue(point.PatternId, out string n) ? n : "?";
+                panel.AddTabLine($"Point #{point.Id} - {name}", async _ =>
+                {
+                    switch (action)
+                    {
+                        case "tp":
+                            PointHelper.PlayerSetPositionToNPoint(player, point);
+                            break;
+                        case "move":
+                            if (await PointHelper.SetNPointPosition(player, point))
+                                player.Notify(Title, "Point déplacé à votre position.", NotificationManager.Type.Success, 5f);
+                            break;
+                        case "delete":
+                            await PointHelper.DeleteNPoint(point);
+                            player.Notify(Title, $"Point #{point.Id} supprimé.", NotificationManager.Type.Success, 5f);
+                            panel.Refresh();
+                            break;
+                    }
+                });
+            }
+            if (points.Count > 0)
+            {
+                panel.AddButton("Se téléporter", _ => { action = "tp"; panel.SelectTab(); });
+                panel.AddButton("Déplacer ici", _ => { action = "move"; panel.SelectTab(); });
+                panel.AddButton(Color("Supprimer", Colors.Error), _ => { action = "delete"; panel.SelectTab(); });
+            }
+            panel.PreviousButton();
+            panel.CloseButton();
+            panel.Display();
+        }
+
+        // ==================================================================
+        //  Webhook Discord
+        // ==================================================================
+
+        private bool HasWebhook => Config != null && !string.IsNullOrWhiteSpace(Config.WebhookUrl) && Config.WebhookUrl.StartsWith("http");
+
+        private void Log(string title, string color, string description, params (string name, string value)[] fields)
+        {
+            if (!HasWebhook) return;
+            _ = SendWebhook(Config.WebhookUrl, title, color, description, fields);
+        }
+
+        private static async Task SendWebhook(string url, string title, string color, string description, (string name, string value)[] fields)
+        {
+            try
+            {
+                List<string> names = fields.Select(f => string.IsNullOrEmpty(f.name) ? "-" : f.name).ToList();
+                List<string> values = fields.Select(f => string.IsNullOrEmpty(f.value) ? "-" : Nova.RemoveTextFormat(f.value)).ToList();
+                await new DiscordWebhookClient(url).SendEmbedAsync(color, title, string.IsNullOrEmpty(description) ? "-" : description,
+                    names, values, true, true, $"{Title} - {DateTime.Now:dd/MM/yyyy HH:mm}");
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(Title, "Webhook Discord : " + ex.Message);
+            }
+        }
+
+        // ==================================================================
         //  Outils
         // ==================================================================
 
-        public double PriceOf(GazPump pump) => pump != null && pump.PrixLitre > 0 ? pump.PrixLitre : Config.PrixLitre;
+        public double PriceOf(ExoPump pump) => pump != null && pump.PrixLitre > 0 ? pump.PrixLitre : Config.PrixLitre;
 
         public bool IsAllowedBiz(int bizId) => bizId > 0 && Config.BizIdList.Contains(bizId);
 
-        public bool IsAllowedAt(Player player, GazPump pump)
+        public bool IsAllowedAt(Player player, ExoPump pump)
         {
             if (player == null || !player.HasBiz) return false;
             int bizId = player.character.BizId;
             return IsAllowedBiz(bizId) && (pump.BizId == 0 || pump.BizId == bizId);
         }
 
-        private string AllowedBizNames(GazPump pump)
+        private string AllowedBizNames(ExoPump pump)
         {
             IEnumerable<int> ids = pump.BizId != 0 ? new[] { pump.BizId } : (IEnumerable<int>)Config.BizIdList;
             List<string> names = ids.Select(BizName).ToList();
@@ -591,9 +1110,18 @@ namespace Gaz
             int bizId = player.character.BizId;
             Bizs biz = player.biz;
             int billCount = _bills.TryGetValue(player.character.Id, out List<PendingBill> bills) ? bills.Count : 0;
-            List<GazPump> pumps = Pumps.Where(p => p.BizId == 0 || p.BizId == bizId).ToList();
+            List<ExoPump> pumps = Pumps.Where(p => p.BizId == 0 || p.BizId == bizId).ToList();
+
+            bool onDuty = IsOnDuty(player);
+            int colleagues = Nova.server.GetAllInGamePlayers().Count(p => p?.character != null && p.character.BizId == bizId && IsOnDuty(p));
 
             Panel panel = PanelHelper.Create($"Station-service - {biz?.BizName}", UIPanel.PanelType.Tab, player, () => EmployeeMenu(player));
+            panel.AddTabLine(onDuty ? Color("Terminer mon service", Colors.Error) : Color("Prendre mon service", Colors.Success), _ =>
+            {
+                SetDuty(player, !onDuty);
+                panel.Refresh();
+            });
+            panel.AddTabLine($"En service dans l'entreprise : {colleagues}", _ => { });
             panel.AddTabLine($"Pompes ({pumps.Count})", _ => EmployeePumps(player));
             panel.AddTabLine(billCount > 0 ? Color($"Pleins à facturer ({billCount})", Colors.Warning) : "Pleins à facturer (0)", _ => PendingBillsMenu(player));
             panel.AddTabLine("Ventes récentes", async _ => await SalesMenu(player, bizId));
@@ -608,12 +1136,12 @@ namespace Gaz
         private void EmployeePumps(Player player)
         {
             int bizId = player.character.BizId;
-            List<GazPump> pumps = Pumps.Where(p => p.BizId == 0 || p.BizId == bizId).OrderBy(p => p.StationName).ThenBy(p => p.PumpName).ToList();
+            List<ExoPump> pumps = Pumps.Where(p => p.BizId == 0 || p.BizId == bizId).OrderBy(p => p.StationName).ThenBy(p => p.PumpName).ToList();
 
             Panel panel = PanelHelper.Create("Station-service - Pompes", UIPanel.PanelType.TabPrice, player, () => EmployeePumps(player));
             if (pumps.Count == 0)
                 panel.AddTabLine("Aucune pompe attribuée", _ => { });
-            foreach (GazPump pump in pumps)
+            foreach (ExoPump pump in pumps)
             {
                 string state = pump.Ouverte ? Color("Ouverte", Colors.Success) : Color("Fermée", Colors.Error);
                 string stock = Config.StockActif ? $" - {pump.Stock}/{Config.CapaciteCiterne} L" : "";
@@ -625,7 +1153,7 @@ namespace Gaz
             panel.Display();
         }
 
-        private void EmployeePump(Player player, GazPump pump)
+        private void EmployeePump(Player player, ExoPump pump)
         {
             bool isBoss = player.biz != null && player.biz.OwnerId == player.character.Id;
 
@@ -663,7 +1191,7 @@ namespace Gaz
             panel.Display();
         }
 
-        private void OrderFuel(Player player, GazPump pump)
+        private void OrderFuel(Player player, ExoPump pump)
         {
             int free = Math.Max(0, Config.CapaciteCiterne - pump.Stock);
             if (free <= 0)
@@ -691,6 +1219,8 @@ namespace Gaz
                     pump.Stock += liters;
                     await pump.Save();
                     player.Notify("Station-service", $"{liters} L livrés dans {pump.Label} pour {Money(cost)}.", NotificationManager.Type.Success, 5f);
+                    Log("🛢️ Commande de carburant", "#3fd2ff", $"{player.FullName} a commandé du carburant.",
+                        ("Pompe", pump.Label), ("Litres", $"{liters} L"), ("Coût", Money(cost)), ("Entreprise", BizName(biz.Id)), ("Citerne", $"{pump.Stock} / {Config.CapaciteCiterne} L"));
                     return true;
                 });
         }
@@ -731,6 +1261,8 @@ namespace Gaz
             {
                 RemoveBill(employee.character.Id, bill);
                 employee.Notify("Station-service", "Plein offert, aucune facture envoyée.", NotificationManager.Type.Info, 5f);
+                Log("🎁 Plein offert", "#ffc93c", $"{employee.FullName} a offert un plein.",
+                    ("Pompe", bill.Pump.Label), ("Litres", $"{bill.Liters} L"), ("Valeur", Money(bill.Total)));
                 panel.Close();
             });
             panel.CloseButton("Plus tard");
@@ -759,6 +1291,8 @@ namespace Gaz
                 {
                     bill.ClientCharacterId = 0;
                     PlayerByCharacter(employeeId)?.Notify("Station-service", $"{client.FullName} a refusé de payer {Money(bill.Total)}.", NotificationManager.Type.Warning, 6f);
+                    Log("❌ Facture refusée", "#ff4d5e", $"{client.FullName} a refusé de payer.",
+                        ("Pompe", bill.Pump.Label), ("Montant", Money(bill.Total)), ("Employé", employeeName));
                 }
                 return Task.FromResult(true);
             });
@@ -793,7 +1327,7 @@ namespace Gaz
             bill.Pump.LitresVendus += bill.Liters;
             bill.Pump.ChiffreAffaires += total;
             _ = bill.Pump.Save();
-            _ = new GazSale
+            _ = new ExoSale
             {
                 PumpId = bill.Pump.Id,
                 PumpLabel = bill.Pump.Label,
@@ -807,6 +1341,10 @@ namespace Gaz
 
             client.Notify("Station-service", $"Vous avez payé {Money(total)}. Bonne route !", NotificationManager.Type.Success, 5f);
             employee?.Notify("Station-service", $"{client.FullName} a payé {Money(total)}" + (commission > 0 ? $" (prime : {Money(commission)})" : "") + ".", NotificationManager.Type.Success, 6f);
+            Log("⛽ Vente de carburant", "#3ddc84", $"{client.FullName} a payé son plein.",
+                ("Pompe", bill.Pump.Label), ("Litres", $"{bill.Liters} L"), ("Total", Money(total)),
+                ("Paiement", cash ? "Espèces" : "Carte"), ("Employé", employee?.FullName ?? "?"), ("Prime", Money(commission)),
+                ("Entreprise", BizName(bill.BizId)));
             return true;
         }
 
@@ -818,13 +1356,13 @@ namespace Gaz
 
         private async Task SalesMenu(Player player, int bizId)
         {
-            List<GazSale> sales = bizId > 0 ? await GazSale.Query(s => s.BizId == bizId) : await GazSale.QueryAll();
-            sales = (sales ?? new List<GazSale>()).OrderByDescending(s => s.Date).Take(30).ToList();
+            List<ExoSale> sales = bizId > 0 ? await ExoSale.Query(s => s.BizId == bizId) : await ExoSale.QueryAll();
+            sales = (sales ?? new List<ExoSale>()).OrderByDescending(s => s.Date).Take(30).ToList();
 
             Panel panel = PanelHelper.Create("Ventes récentes", UIPanel.PanelType.TabPrice, player, async () => await SalesMenu(player, bizId));
             if (sales.Count == 0)
                 panel.AddTabLine("Aucune vente", _ => { });
-            foreach (GazSale sale in sales)
+            foreach (ExoSale sale in sales)
             {
                 string date = Nova.UnixTimeToDateTime(sale.Date).ToString("dd/MM HH:mm");
                 panel.AddTabLine($"{date} - {sale.ClientName} - {sale.Litres} L ({sale.EmployeeName})", Money(sale.Montant), IconUtils.Others.None.Id, _ => { });
@@ -864,6 +1402,7 @@ namespace Gaz
                 {
                     Config.PrixLitre = Math.Round(v, 2);
                     await Config.Save();
+                    Log("⚙️ Configuration", "#ffb21e", $"{player.FullName} a changé le prix du litre.", ("Nouveau prix", Money(Config.PrixLitre)));
                     _nextScan = 0f;
                 }));
             panel.AddTabLine($"Prime employé : {Config.CommissionPourcent} %", _ =>
@@ -893,6 +1432,36 @@ namespace Gaz
                         await Config.Save();
                     }));
             }
+            panel.AddTabLine($"Automate (sans employé en service) : {OnOff(!Config.AutomateDesactive)}", async _ =>
+            {
+                Config.AutomateDesactive = !Config.AutomateDesactive;
+                await Config.Save();
+                panel.Refresh();
+            });
+            panel.AddTabLine($"Montants de l'automate : {string.Join(", ", Config.MontantsList)} €", _ =>
+                AskInput(player, "Montants de l'automate", "Montants proposés à l'automate, séparés par des virgules", Config.Montants ?? "10,20,30,40,50,60,70,80", async input =>
+                {
+                    List<double> list = input.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries)
+                        .Select(x => TryParseNumber(x, out double v) ? v : 0).Where(v => v > 0).Distinct().OrderBy(v => v).ToList();
+                    if (list.Count == 0) return false;
+                    Config.Montants = string.Join(",", list.Select(v => v.ToString(CultureInfo.InvariantCulture)));
+                    return await Config.Save();
+                }));
+            panel.AddTabLine("Automates (points bleus)", _ => AutomateAdmin(player));
+            panel.AddTabLine($"Webhook Discord : {(HasWebhook ? Color("configuré", Colors.Success) : Color("non configuré", Colors.Grey))}", _ =>
+                AskInput(player, "Webhook Discord", "Collez l'URL du webhook Discord (ou « 0 » pour le retirer).\nAstuce : la commande /exowebhook <url> marche aussi.", "https://discord.com/api/webhooks/...", async input =>
+                {
+                    Config.WebhookUrl = input == "0" ? "" : input;
+                    await Config.Save();
+                    player.Notify(Title, HasWebhook ? "Webhook enregistré." : "Webhook retiré.", NotificationManager.Type.Success, 4f);
+                    return true;
+                }));
+            if (HasWebhook)
+                panel.AddTabLine("Tester le webhook", _ =>
+                {
+                    Log("✅ Test du webhook", "#3fd2ff", $"Test envoyé par {player.FullName}.", ("Pompes", Pumps.Count.ToString()), ("Prix du litre", Money(Config.PrixLitre)));
+                    player.Notify(Title, "Message de test envoyé sur Discord.", NotificationManager.Type.Info, 4f);
+                });
             panel.AddTabLine("Toutes les ventes", async _ => await SalesMenu(player, 0));
             panel.SelectTabButton();
             panel.CloseButton();
@@ -917,6 +1486,7 @@ namespace Gaz
                     Config.BizIdList = ids;
                     await Config.Save();
                     await RefreshBizLines();
+                    Log("⚙️ Configuration", "#ffb21e", $"{player.FullName} a {(allowed ? "retiré" : "autorisé")} une entreprise.", ("Entreprise", $"[{biz.Id}] {biz.BizName}"));
                     panel.Refresh();
                 });
             }
@@ -928,12 +1498,12 @@ namespace Gaz
 
         private void AdminPumps(Player player)
         {
-            List<GazPump> pumps = Pumps.OrderBy(p => p.StationName).ThenBy(p => p.PumpName).ToList();
+            List<ExoPump> pumps = Pumps.OrderBy(p => p.StationName).ThenBy(p => p.PumpName).ToList();
 
             Panel panel = PanelHelper.Create("Pompes configurées", UIPanel.PanelType.TabPrice, player, () => AdminPumps(player));
             if (pumps.Count == 0)
                 panel.AddTabLine("Aucune pompe : utilisez « Ajouter »", _ => { });
-            foreach (GazPump pump in pumps)
+            foreach (ExoPump pump in pumps)
             {
                 string owner = pump.BizId == 0 ? "Toutes" : BizName(pump.BizId);
                 panel.AddTabLine($"{pump.Label} ({owner})", Money(PriceOf(pump)), IconUtils.Others.None.Id, _ => AdminPump(player, pump));
@@ -944,7 +1514,7 @@ namespace Gaz
             panel.Display();
         }
 
-        private void AdminPump(Player player, GazPump pump)
+        private void AdminPump(Player player, ExoPump pump)
         {
             Panel panel = PanelHelper.Create($"Pompe - {pump.Label}", UIPanel.PanelType.Tab, player, () => AdminPump(player, pump));
             panel.AddTabLine($"Nom : {pump.PumpName}", _ =>
@@ -999,7 +1569,7 @@ namespace Gaz
             panel.Display();
         }
 
-        private void AdminPumpBiz(Player player, GazPump pump)
+        private void AdminPumpBiz(Player player, ExoPump pump)
         {
             Panel panel = PanelHelper.Create("Entreprise de la pompe", UIPanel.PanelType.Tab, player, () => AdminPumpBiz(player, pump));
             panel.AddTabLine("Toutes les entreprises autorisées", async _ => await SetPumpBiz(player, pump, 0, panel));
@@ -1011,7 +1581,7 @@ namespace Gaz
             panel.Display();
         }
 
-        private async Task SetPumpBiz(Player player, GazPump pump, int bizId, Panel panel)
+        private async Task SetPumpBiz(Player player, ExoPump pump, int bizId, Panel panel)
         {
             pump.BizId = bizId;
             await pump.Save();
@@ -1028,7 +1598,7 @@ namespace Gaz
                 return;
             }
             Vector3 pos = station.transform.position;
-            GazPump existing = Pumps.FirstOrDefault(p => Vector3.Distance(p.Position, pos) <= LinkRange);
+            ExoPump existing = Pumps.FirstOrDefault(p => Vector3.Distance(p.Position, pos) <= LinkRange);
             if (existing != null)
             {
                 player.Notify(Title, $"Cette pompe est déjà configurée : {existing.Label}.", NotificationManager.Type.Warning, 5f);
@@ -1037,14 +1607,14 @@ namespace Gaz
             }
 
             // Reprend le nom de la station la plus proche s'il y en a une
-            GazPump neighbour = Pumps.Where(p => Vector3.Distance(p.Position, pos) <= StationClusterRange)
+            ExoPump neighbour = Pumps.Where(p => Vector3.Distance(p.Position, pos) <= StationClusterRange)
                 .OrderBy(p => Vector3.Distance(p.Position, pos)).FirstOrDefault();
             string stationName = neighbour?.StationName ?? $"Station {Pumps.Select(p => p.StationName).Distinct().Count() + 1}";
             int number = Pumps.Count(p => p.StationName == stationName) + 1;
 
             AskInput(player, "Nouvelle pompe", $"Station : {stationName}\nNom de la pompe :", $"Pompe {number}", async input =>
             {
-                GazPump pump = new GazPump
+                ExoPump pump = new ExoPump
                 {
                     StationName = stationName,
                     PumpName = input.Length > 0 ? input : $"Pompe {number}",
@@ -1071,11 +1641,11 @@ namespace Gaz
             {
                 Vector3 pos = station.transform.position;
                 // Même station que la pompe déjà configurée la plus proche (< 30 m), sinon nouvelle station
-                GazPump neighbour = Pumps.Where(p => Vector3.Distance(p.Position, pos) <= StationClusterRange)
+                ExoPump neighbour = Pumps.Where(p => Vector3.Distance(p.Position, pos) <= StationClusterRange)
                     .OrderBy(p => Vector3.Distance(p.Position, pos)).FirstOrDefault();
                 string stationName = neighbour?.StationName ?? $"Station {Pumps.Select(p => p.StationName).Distinct().Count() + 1}";
 
-                GazPump pump = new GazPump
+                ExoPump pump = new ExoPump
                 {
                     StationName = stationName,
                     PumpName = $"Pompe {Pumps.Count(p => p.StationName == stationName) + 1}",
@@ -1101,18 +1671,38 @@ namespace Gaz
     /// <summary>Un pistolet branché sur un véhicule par un employé autorisé.</summary>
     internal class FillSession
     {
-        public GazPump Pump;
+        public ExoPump Pump;
         public int EmployeeCharacterId;
         public int BizId;
         public uint VehicleNetId;
         public bool IsElectric;
         public int Liters;
+        /// <summary>Non null quand la pompe a été payée à l'automate.</summary>
+        public Prepay Prepay;
+        /// <summary>Litres maximum (automate), 0 = pas de limite.</summary>
+        public int MaxLiters;
+    }
+
+    /// <summary>Paiement d'avance à l'automate : débloque une pompe pour un joueur.</summary>
+    internal class Prepay
+    {
+        public int PumpId;
+        public string PumpLabel;
+        public int CharacterId;
+        public string ClientName;
+        public double Amount;
+        public double PricePerLiter;
+        public int MaxLiters;
+        public bool Cash;
+        public int BizId;
+        public float Expires;
+        public bool InUse;
     }
 
     /// <summary>Plein terminé, en attente de paiement par un client.</summary>
     internal class PendingBill
     {
-        public GazPump Pump;
+        public ExoPump Pump;
         public int BizId;
         public int Liters;
         public double PricePerLiter;
@@ -1124,7 +1714,8 @@ namespace Gaz
     //  Données sauvegardées (base ModKit)
     // ======================================================================
 
-    public class GazConfig : ModEntity<GazConfig>
+    [Table("GazConfig")]
+    public class ExoConfig : ModEntity<ExoConfig>
     {
         [AutoIncrement]
         [PrimaryKey]
@@ -1137,6 +1728,23 @@ namespace Gaz
         public double PrixAchatLitre { get; set; } = 1.0;
         public int CapaciteCiterne { get; set; } = 1000;
         public int CommissionPourcent { get; set; } = 10;
+        public string WebhookUrl { get; set; } = "";
+        /// <summary>Faux par défaut, y compris pour les anciennes bases (colonne ajoutée à 0).</summary>
+        public bool AutomateDesactive { get; set; }
+        /// <summary>Montants proposés par l'automate, séparés par des virgules.</summary>
+        public string Montants { get; set; } = "10,20,30,40,50,60,70,80";
+
+        [Ignore]
+        public List<double> MontantsList
+        {
+            get
+            {
+                List<double> list = (Montants ?? "").Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(s => double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out double v) ? v : 0)
+                    .Where(v => v > 0).ToList();
+                return list.Count > 0 ? list : new List<double> { 10, 20, 30, 40, 50, 60, 70, 80 };
+            }
+        }
 
         [Ignore]
         public List<int> BizIdList
@@ -1147,7 +1755,8 @@ namespace Gaz
         }
     }
 
-    public class GazPump : ModEntity<GazPump>
+    [Table("GazPump")]
+    public class ExoPump : ModEntity<ExoPump>
     {
         [AutoIncrement]
         [PrimaryKey]
@@ -1178,7 +1787,8 @@ namespace Gaz
         public string Label => $"{StationName} - {PumpName}";
     }
 
-    public class GazSale : ModEntity<GazSale>
+    [Table("GazSale")]
+    public class ExoSale : ModEntity<ExoSale>
     {
         [AutoIncrement]
         [PrimaryKey]
@@ -1192,5 +1802,44 @@ namespace Gaz
         public int Litres { get; set; }
         public double Montant { get; set; }
         public long Date { get; set; }
+    }
+
+    /// <summary>
+    /// Point bleu « Automate essence » : placé par le staff dans une station, il permet de payer
+    /// d'avance quand aucun employé n'est en service.
+    /// </summary>
+    public class ExoAutomatePattern : ModEntity<ExoAutomatePattern>, PatternData
+    {
+        [AutoIncrement]
+        [PrimaryKey]
+        public int Id { get; set; }
+
+        public string PatternName { get; set; }
+        public string StationName { get; set; }
+
+        [Ignore]
+        public string TypeName { get; set; } = nameof(ExoAutomatePattern);
+
+        [Ignore]
+        public ModKit.ModKit Context { get; set; }
+
+        public void OnPlayerTrigger(Player player) => ExoPlugin.Instance?.AutomateMenu(player, StationName);
+
+        public async Task SetProperties(int id)
+        {
+            ExoAutomatePattern result = await Query(id);
+            Id = id;
+            TypeName = nameof(ExoAutomatePattern);
+            PatternName = result?.PatternName;
+            StationName = result?.StationName;
+        }
+
+        public void CreateOrGenerate(Player player) => ExoPlugin.Instance?.AutomateAdmin(player);
+
+        public void SetPatternData(Player player) => ExoPlugin.Instance?.AutomateNew(player);
+
+        public Task GetPatternData(Player player, bool forEdit) => ExoPlugin.Instance?.AutomateModels(player) ?? Task.CompletedTask;
+
+        public Task GetNPoints(Player player) => ExoPlugin.Instance?.AutomatePoints(player) ?? Task.CompletedTask;
     }
 }
