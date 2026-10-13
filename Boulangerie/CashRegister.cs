@@ -154,6 +154,9 @@ namespace Boulangerie
 
             panel.AddTabLine(Color("Mes ventes du jour", Colors.Grey), $"{mySales.Count} / {Money(mySales.Sum(s => s.Total))}", none, _ => panel.Refresh());
 
+            panel.AddTabLine(Color("Stock / réapprovisionner", Colors.Orange), "", none, _ => Plugin.StockPanel(player, cart.BizId));
+            panel.AddTabLine(Color("Voir la carte client", Colors.Grey), "", none, _ => MenuCard.Show(player, cart.BizId, true));
+
             if (BoulangeriePlugin.CanManage(player, cart.BizId))
                 panel.AddTabLine(Color("Gérer la boulangerie (carte, stats, historique)", Colors.Purple), "", none, _ => Plugin.ManageMenu(player, cart.BizId));
 
@@ -169,8 +172,21 @@ namespace Boulangerie
         private static async void ProductPicker(Player player, Cart cart)
         {
             int bizId = cart.BizId;
-            List<BakeryProduct> products = (await BakeryProduct.Query(p => p.BizId == bizId)).Where(p => p.Available).OrderBy(p => p.Name).ToList();
+            var (allProducts, allFormulas) = await StockHelper.Load(bizId);
+            List<BakeryProduct> products = allProducts.Values.Where(p => p.Available).OrderBy(p => p.Name).ToList();
             bool multiple = false;
+
+            bool TryAdd(BakeryProduct p, int quantity)
+            {
+                List<string> missing = StockHelper.MissingIfAdded(cart, false, p.Id, p.Name, p.Price, quantity, allProducts, allFormulas);
+                if (missing.Count > 0)
+                {
+                    player.Notify(Tag, "Stock insuffisant : " + string.Join(", ", missing), NotificationManager.Type.Error, 5f);
+                    return false;
+                }
+                cart.Add(false, p.Id, p.Name, p.Price, quantity);
+                return true;
+            }
 
             Panel panel = Plugin.PanelHelper.Create($"{cart.RegisterName} - Produits", UIPanel.PanelType.TabPrice, player, () => ProductPicker(player, cart));
             panel.AddTabLine(Color($"Panier : {cart.ItemCount} article(s)", Colors.Grey), Money(cart.Total), IconUtils.Others.None.Id, _ => panel.Refresh());
@@ -181,16 +197,16 @@ namespace Boulangerie
             foreach (BakeryProduct product in products)
             {
                 BakeryProduct p = product;
-                panel.AddTabLine(p.Name, Money(p.Price), BoulangeriePlugin.Icon(p.ItemId), _ =>
+                panel.AddTabLine(p.Name + "<br>" + Size(StockHelper.Label(p), 14), Money(p.Price), BoulangeriePlugin.Icon(p.ItemId), _ =>
                 {
                     if (multiple)
                     {
                         Plugin.AskInt(player, $"{cart.RegisterName} - Quantité", $"Combien de « {p.Name} » ?", 1, 1, 100,
-                            v => { cart.Add(false, p.Id, p.Name, p.Price, v); return Task.CompletedTask; });
+                            v => { TryAdd(p, v); return Task.CompletedTask; });
                         return;
                     }
-                    cart.Add(false, p.Id, p.Name, p.Price);
-                    player.Notify(Tag, $"+1 {p.Name}", NotificationManager.Type.Success, 2f);
+                    if (TryAdd(p, 1))
+                        player.Notify(Tag, $"+1 {p.Name}", NotificationManager.Type.Success, 2f);
                     panel.Refresh();
                 });
             }
@@ -208,8 +224,9 @@ namespace Boulangerie
         private static async void FormulaPicker(Player player, Cart cart)
         {
             int bizId = cart.BizId;
-            List<BakeryFormula> formulas = (await BakeryFormula.Query(f => f.BizId == bizId)).Where(f => f.Available).OrderBy(f => f.Name).ToList();
-            Dictionary<int, string> productNames = (await BakeryProduct.Query(p => p.BizId == bizId)).ToDictionary(p => p.Id, p => p.Name);
+            var (allProducts, allFormulas) = await StockHelper.Load(bizId);
+            List<BakeryFormula> formulas = allFormulas.Values.Where(f => f.Available).OrderBy(f => f.Name).ToList();
+            Dictionary<int, string> productNames = allProducts.ToDictionary(p => p.Key, p => p.Value.Name);
 
             Panel panel = Plugin.PanelHelper.Create($"{cart.RegisterName} - Formules", UIPanel.PanelType.TabPrice, player, () => FormulaPicker(player, cart));
             panel.AddTabLine(Color($"Panier : {cart.ItemCount} article(s)", Colors.Grey), Money(cart.Total), IconUtils.Others.None.Id, _ => panel.Refresh());
@@ -220,10 +237,17 @@ namespace Boulangerie
             foreach (BakeryFormula formula in formulas)
             {
                 BakeryFormula f = formula;
-                panel.AddTabLine(f.Name + "<br>" + Size(Color(DescribeFormula(f, productNames), Colors.Grey), 14), Money(f.Price), IconUtils.Others.None.Id, _ =>
+                string state = StockHelper.FormulaAvailable(f, allProducts) ? "" : Color(" (épuisée)", Colors.Error);
+                panel.AddTabLine(f.Name + state + "<br>" + Size(Color(DescribeFormula(f, productNames), Colors.Grey), 14), Money(f.Price), IconUtils.Others.None.Id, _ =>
                 {
-                    cart.Add(true, f.Id, f.Name, f.Price);
-                    player.Notify(Tag, $"+1 formule {f.Name}", NotificationManager.Type.Success, 2f);
+                    List<string> missing = StockHelper.MissingIfAdded(cart, true, f.Id, f.Name, f.Price, 1, allProducts, allFormulas);
+                    if (missing.Count > 0)
+                        player.Notify(Tag, "Stock insuffisant : " + string.Join(", ", missing), NotificationManager.Type.Error, 5f);
+                    else
+                    {
+                        cart.Add(true, f.Id, f.Name, f.Price);
+                        player.Notify(Tag, $"+1 formule {f.Name}", NotificationManager.Type.Success, 2f);
+                    }
                     panel.Refresh();
                 });
             }
@@ -469,6 +493,16 @@ namespace Boulangerie
             req.ClientNetId = client.netId;
             req.ClientName = client.FullName;
 
+            // Stock de la boulangerie (il a pu bouger depuis l'envoi de l'addition)
+            var (stockProducts, stockFormulas) = await StockHelper.Load(c.BizId);
+            List<string> outOfStock = StockHelper.Missing(c, stockProducts, stockFormulas);
+            if (outOfStock.Count > 0)
+            {
+                cashier.Notify(Tag, "Vente annulée, stock insuffisant : " + string.Join(", ", outOfStock), NotificationManager.Type.Error, 8f);
+                client.Notify(Tag, "Un produit de votre commande n'est plus en stock, la vente est annulée.", NotificationManager.Type.Warning, 6f);
+                return true;
+            }
+
             // Items à remettre au client
             Dictionary<int, int> items = Config.GiveItems ? await ItemsToGive(c) : new Dictionary<int, int>();
             if (Config.UseCashierStock)
@@ -499,6 +533,10 @@ namespace Boulangerie
                 commission = total; // entreprise supprimée : tout revient au boulanger
             if (commission > 0)
                 cashier.AddBankMoney(commission, "Commission boulangerie");
+
+            List<string> soldOut = await StockHelper.Consume(c, stockProducts, stockFormulas);
+            if (soldOut.Count > 0)
+                cashier.Notify(Tag, "Épuisé : " + string.Join(", ", soldOut) + ". Pensez à réapprovisionner.", NotificationManager.Type.Warning, 8f);
 
             // Remise des items
             List<string> notGiven = new List<string>();

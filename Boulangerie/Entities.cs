@@ -66,6 +66,12 @@ namespace Boulangerie
 
         /// <summary>Faux = en rupture, n'apparaît pas à la caisse.</summary>
         public bool Available { get; set; } = true;
+
+        /// <summary>Vrai : la quantité <see cref="Stock"/> est suivie ; faux : stock illimité.</summary>
+        public bool TrackStock { get; set; }
+
+        /// <summary>Quantité en stock (utilisée seulement si <see cref="TrackStock"/>).</summary>
+        public int Stock { get; set; }
     }
 
     /// <summary>Formule maison (ex. croissant + café) vendue à prix fixe.</summary>

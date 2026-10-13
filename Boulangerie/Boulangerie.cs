@@ -49,6 +49,7 @@ namespace Boulangerie
             Orm.RegisterTable<BakeryConfig>();
             Orm.RegisterTable<CashRegister>();
             Orm.RegisterTable<PaymentPoint>();
+            Orm.RegisterTable<MenuBoard>();
             Orm.RegisterTable<BakeryProduct>();
             Orm.RegisterTable<BakeryFormula>();
             Orm.RegisterTable<BakerySale>();
@@ -58,12 +59,15 @@ namespace Boulangerie
             PointHelper.AddPattern(nameof(CashRegister), pattern);
             PaymentPoint paymentPoint = new PaymentPoint(false);
             PointHelper.AddPattern(nameof(PaymentPoint), paymentPoint);
+            MenuBoard menuBoard = new MenuBoard(false);
+            PointHelper.AddPattern(nameof(MenuBoard), menuBoard);
 
             if (AAMenu.AAMenu.menu != null)
             {
                 // Administration > Points : placer / gérer les caisses
                 AAMenu.AAMenu.menu.AddBuilder(PluginInformations, "Caisse boulangerie", pattern, this);
                 AAMenu.AAMenu.menu.AddBuilder(PluginInformations, "Paiement client boulangerie", paymentPoint, this);
+                AAMenu.AAMenu.menu.AddBuilder(PluginInformations, "Carte boulangerie", menuBoard, this);
                 // Administration > Plugins : configuration du plugin
                 AAMenu.Menu.AddAdminPluginTabLine(PluginInformations, 1, "Boulangerie", ui =>
                 {
@@ -141,6 +145,17 @@ namespace Boulangerie
                         return;
                     }
                     new CashRegister(false) { Context = this }.CreateOrGenerate(player);
+                })).Register();
+
+            new SChatCommand("/cartes", "Placer / gérer les cartes de boulangerie (staff)", "/cartes",
+                (Action<Player, string[]>)((player, args) =>
+                {
+                    if (!IsStaff(player))
+                    {
+                        player.Notify(Tag, "Vous devez être staff et en service admin.", NotificationManager.Type.Error, 5f);
+                        return;
+                    }
+                    new MenuBoard(false) { Context = this }.CreateOrGenerate(player);
                 })).Register();
 
             new SChatCommand("/paiements", "Placer / gérer les points de paiement client (staff)", "/paiements",
@@ -381,6 +396,7 @@ namespace Boulangerie
             });
             panel.AddTabLine(Color("Placer / gérer les caisses", Colors.Info), "", none, _ => new CashRegister(false) { Context = this }.CreateOrGenerate(player));
             panel.AddTabLine(Color("Placer / gérer les points de paiement client", Colors.Info), "", none, _ => new PaymentPoint(false) { Context = this }.CreateOrGenerate(player));
+            panel.AddTabLine(Color("Placer / gérer les cartes (menu client)", Colors.Info), "", none, _ => new MenuBoard(false) { Context = this }.CreateOrGenerate(player));
 
             panel.NextButton("Sélectionner", () => panel.SelectTab());
             if (AAMenu.AAMenu.menu != null)

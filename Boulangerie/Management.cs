@@ -32,6 +32,8 @@ namespace Boulangerie
             Panel panel = PanelHelper.Create("Boulangerie - Gestion", UIPanel.PanelType.Tab, player, () => ManageMenu(player, bizId, fromAAMenu));
             panel.AddTabLine($"Produits ({products})", _ => ProductsList(player, bizId));
             panel.AddTabLine($"Formules maison ({formulas})", _ => FormulasList(player, bizId));
+            panel.AddTabLine("Stock / réapprovisionner", _ => StockPanel(player, bizId));
+            panel.AddTabLine("Voir la carte client", _ => MenuCard.Show(player, bizId, true));
             panel.AddTabLine("Statistiques", _ => Stats(player, bizId));
             panel.AddTabLine("Historique des ventes", _ => History(player, bizId));
 
@@ -58,8 +60,7 @@ namespace Boulangerie
             foreach (BakeryProduct product in products)
             {
                 BakeryProduct p = product;
-                string state = p.Available ? "" : Color(" (rupture)", Colors.Error);
-                panel.AddTabLine(p.Name + state + "<br>" + Size(Color("Item : " + ItemName(p.ItemId), Colors.Grey), 14),
+                panel.AddTabLine(p.Name + "<br>" + Size(StockHelper.Label(p) + Color(" - Item : " + ItemName(p.ItemId), Colors.Grey), 14),
                     Money(p.Price), Icon(p.ItemId), _ => ProductEdit(player, p));
             }
 
@@ -212,6 +213,19 @@ namespace Boulangerie
                 await product.Save();
                 panel.Refresh();
             });
+            panel.AddTabLine("Suivi du stock", product.TrackStock ? Color("Oui", Colors.Success) : Color("Non (illimité)", Colors.Grey), none, async _ =>
+            {
+                product.TrackStock = !product.TrackStock;
+                await product.Save();
+                panel.Refresh();
+            });
+            if (product.TrackStock)
+                panel.AddTabLine("Quantité en stock", product.Stock.ToString(), none, _ =>
+                    AskInt(player, EditTitle, $"Quantité de « {product.Name} » en stock", product.Stock, 0, 100000, async v =>
+                    {
+                        product.Stock = v;
+                        await product.Save();
+                    }));
             panel.AddTabLine(Color("Supprimer le produit", Colors.Error), "", none, async _ =>
             {
                 // Retire aussi le produit des formules qui le contiennent
@@ -231,6 +245,69 @@ namespace Boulangerie
             });
 
             panel.NextButton("Sélectionner", () => panel.SelectTab());
+            panel.PreviousButton();
+            panel.CloseButton();
+            panel.Display();
+        }
+
+        /// <summary>Réapprovisionnement rapide : accessible à tous les employés de la boulangerie.</summary>
+        public async void StockPanel(Player player, int bizId)
+        {
+            if (!IsStaff(player) && (!player.HasBiz || player.biz.Id != bizId))
+            {
+                player.Notify(Tag, "Vous ne travaillez pas dans cette boulangerie.", NotificationManager.Type.Error, 5f);
+                return;
+            }
+            bool canManage = CanManage(player, bizId);
+            List<BakeryProduct> products = (await BakeryProduct.Query(p => p.BizId == bizId)).OrderBy(p => p.Name).ToList();
+            string action = "add";
+
+            Panel panel = PanelHelper.Create("Boulangerie - Stock", UIPanel.PanelType.TabPrice, player, () => StockPanel(player, bizId));
+            if (products.Count == 0)
+                panel.AddTabLine("Aucun produit", "", IconUtils.Others.None.Id, _ => panel.Refresh());
+            foreach (BakeryProduct product in products)
+            {
+                BakeryProduct p = product;
+                string qty = p.TrackStock ? $"x{p.Stock}" : Color("illimité", Colors.Grey);
+                panel.AddTabLine(p.Name + "<br>" + Size(StockHelper.Label(p), 14), qty, Icon(p.ItemId), async _ =>
+                {
+                    switch (action)
+                    {
+                        case "add":
+                            AskInt(player, EditTitle, $"Combien de « {p.Name} » ajouter au stock ?", 10, 1, 10000, async v =>
+                            {
+                                p.TrackStock = true;
+                                p.Stock += v;
+                                await p.Save();
+                                player.Notify(Tag, $"+{v} {p.Name} (stock : {p.Stock}).", NotificationManager.Type.Success, 4f);
+                            });
+                            break;
+                        case "set":
+                            AskInt(player, EditTitle, $"Nouvelle quantité de « {p.Name} » en stock", p.Stock, 0, 100000, async v =>
+                            {
+                                p.TrackStock = true;
+                                p.Stock = v;
+                                await p.Save();
+                            });
+                            break;
+                        case "toggle":
+                            if (canManage)
+                            {
+                                p.TrackStock = !p.TrackStock;
+                                await p.Save();
+                            }
+                            panel.Refresh();
+                            break;
+                    }
+                });
+            }
+            if (products.Count > 0)
+            {
+                panel.NextButton("Ajouter au stock", () => { action = "add"; panel.SelectTab(); });
+                panel.NextButton("Définir", () => { action = "set"; panel.SelectTab(); });
+                if (canManage)
+                    panel.NextButton("Illimité / suivi", () => { action = "toggle"; panel.SelectTab(); });
+            }
             panel.PreviousButton();
             panel.CloseButton();
             panel.Display();
