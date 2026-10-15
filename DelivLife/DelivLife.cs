@@ -623,7 +623,7 @@ namespace DelivLife
         private void KioskMode(Player player, DelivRestaurant restaurant)
         {
             Panel panel = PanelHelper.Create($"{restaurant.Name} - Bienvenue !", UIPanel.PanelType.Text, player, () => KioskMode(player, restaurant));
-            panel.TextLines.Add(Size(Bold(Align(restaurant.Name, Aligns.Center)), 24));
+            panel.TextLines.Add(Bold(Align(restaurant.Name, Aligns.Center)));
             panel.TextLines.Add(Align(string.IsNullOrWhiteSpace(restaurant.WelcomeMessage)
                 ? "Bienvenue ! Composez votre commande sur la borne, payez et récupérez votre ticket."
                 : restaurant.WelcomeMessage, Aligns.Center));
@@ -693,7 +693,6 @@ namespace DelivLife
             foreach (DelivProduct product in products)
             {
                 string label = Bold(product.Name);
-                if (!string.IsNullOrWhiteSpace(product.Description)) label += "<br>" + Size(Color(product.Description, Colors.Grey), 13);
                 int inCart = cart.Lines.Where(l => l.ProductId == product.Id).Sum(l => l.Quantity);
                 if (inCart > 0) label += " " + Color($"(x{inCart})", Colors.Success);
 
@@ -801,7 +800,7 @@ namespace DelivLife
             foreach (DelivOrderLine line in cart.Lines.ToList())
             {
                 string label = $"{line.Quantity}x {Bold(line.Name)}";
-                if (!string.IsNullOrEmpty(line.Details)) label += "<br>" + Size(Color(line.Details, Colors.Grey), 13);
+                if (!string.IsNullOrEmpty(line.Details)) label += Color($" ({Truncate(line.Details, 35)})", Colors.Grey);
                 panel.AddTabLine(label, Money(line.Total), IconUtils.Others.None.Id, _ =>
                 {
                     line.Quantity--;
@@ -830,18 +829,18 @@ namespace DelivLife
 
         private static void AddRecapLines(Panel panel, DelivRestaurant restaurant, DelivCart cart)
         {
-            panel.TextLines.Add(Size(Bold(Align(restaurant.Name, Aligns.Center)), 20));
+            panel.TextLines.Add(Bold(Align(restaurant.Name, Aligns.Center)));
             panel.TextLines.Add(Align(Color("Récapitulatif de la commande", Colors.Info), Aligns.Center));
             panel.TextLines.Add("");
             foreach (DelivOrderLine line in cart.Lines)
             {
                 panel.TextLines.Add($"{line.Quantity}x {Bold(line.Name)}  —  {Money(line.Total)}");
-                if (!string.IsNullOrEmpty(line.Details)) panel.TextLines.Add(Size(Color($"     {line.Details}", Colors.Grey), 14));
+                if (!string.IsNullOrEmpty(line.Details)) panel.TextLines.Add(Color($"   > {line.Details}", Colors.Grey));
             }
             panel.TextLines.Add("");
             panel.TextLines.Add($"Mode : {Bold(cart.Mode == DelivOrder.ModeTakeAway ? "À emporter" : "Sur place")}");
             if (!string.IsNullOrWhiteSpace(cart.Note)) panel.TextLines.Add($"Remarque : {Italic(cart.Note)}");
-            panel.TextLines.Add(Size(Bold($"TOTAL : {Money(cart.Total)}"), 22));
+            panel.TextLines.Add(Bold($"TOTAL : {Money(cart.Total)}"));
         }
 
         /// <summary>Récapitulatif avant paiement.</summary>
@@ -931,15 +930,15 @@ namespace DelivLife
         public void ShowTicket(Player player, DelivRestaurant restaurant, DelivOrder order)
         {
             Panel panel = PanelHelper.Create($"Ticket n°{order.TicketLabel}", UIPanel.PanelType.Text, player, () => ShowTicket(player, restaurant, order));
-            panel.TextLines.Add(Size(Bold(Align(restaurant.Name, Aligns.Center)), 20));
+            panel.TextLines.Add(Bold(Align(restaurant.Name, Aligns.Center)));
             panel.TextLines.Add(Align("Merci pour votre commande !", Aligns.Center));
-            panel.TextLines.Add(Align(Size(Bold(Color($"N° {order.TicketLabel}", Colors.Orange)), 48), Aligns.Center));
+            panel.TextLines.Add(Align(Bold(Color($"N° {order.TicketLabel}", Colors.Orange)), Aligns.Center));
             panel.TextLines.Add(Align(Color("Conservez ce numéro, il s'affichera à l'écran quand votre commande sera prête.", Colors.Grey), Aligns.Center));
             panel.TextLines.Add("");
             foreach (DelivOrderLine line in order.GetLines())
             {
                 panel.TextLines.Add($"{line.Quantity}x {line.Name}  —  {Money(line.Total)}");
-                if (!string.IsNullOrEmpty(line.Details)) panel.TextLines.Add(Size(Color($"     {line.Details}", Colors.Grey), 14));
+                if (!string.IsNullOrEmpty(line.Details)) panel.TextLines.Add(Color($"   > {line.Details}", Colors.Grey));
             }
             panel.TextLines.Add("");
             panel.TextLines.Add($"{order.ModeLabel} • Payé par {order.PaymentLabel.ToLower()} • {Hour(order.CreatedAt)}");
@@ -972,7 +971,7 @@ namespace DelivLife
             foreach (DelivOrder order in orders)
             {
                 string restaurantName = names.TryGetValue(order.BizId, out string n) ? n : "?";
-                panel.AddTabLine($"N° {Bold(order.TicketLabel)} - {restaurantName}<br>{Size($"{DelivStatus.Colored(order.Status)} • {Hour(order.CreatedAt)}", 14)}",
+                panel.AddTabLine($"N° {Bold(order.TicketLabel)} • {DelivStatus.Colored(order.Status)} • {Truncate(restaurantName, 18)} • {Hour(order.CreatedAt)}",
                     Money(order.Total), IconUtils.Others.None.Id, _ => ClientOrderDetail(player, order.Id));
             }
 
@@ -990,15 +989,15 @@ namespace DelivLife
             DelivRestaurant restaurant = await GetRestaurantByBiz(order.BizId);
 
             Panel panel = PanelHelper.Create($"Commande n°{order.TicketLabel}", UIPanel.PanelType.Text, player, () => ClientOrderDetail(player, orderId));
-            panel.TextLines.Add(Size(Bold(Align(restaurant?.Name ?? "Restaurant", Aligns.Center)), 20));
-            panel.TextLines.Add(Align(Size(Bold($"N° {order.TicketLabel}"), 36), Aligns.Center));
+            panel.TextLines.Add(Bold(Align(restaurant?.Name ?? "Restaurant", Aligns.Center)));
+            panel.TextLines.Add(Align(Bold($"N° {order.TicketLabel}"), Aligns.Center));
             panel.TextLines.Add(Align($"Statut : {DelivStatus.Colored(order.Status)}", Aligns.Center));
             panel.TextLines.Add(Align(StatusProgress(order.Status), Aligns.Center));
             panel.TextLines.Add("");
             foreach (DelivOrderLine line in order.GetLines())
             {
                 panel.TextLines.Add($"{line.Quantity}x {line.Name}  —  {Money(line.Total)}");
-                if (!string.IsNullOrEmpty(line.Details)) panel.TextLines.Add(Size(Color($"     {line.Details}", Colors.Grey), 14));
+                if (!string.IsNullOrEmpty(line.Details)) panel.TextLines.Add(Color($"   > {line.Details}", Colors.Grey));
             }
             if (!string.IsNullOrWhiteSpace(order.Note)) panel.TextLines.Add($"Remarque : {Italic(order.Note)}");
             panel.TextLines.Add($"{order.ModeLabel} • {order.PaymentLabel} • commandé {Elapsed(order.CreatedAt)}");
@@ -1047,11 +1046,11 @@ namespace DelivLife
             }
 
             Panel panel = PanelHelper.Create($"{restaurant.Name} - Écran des commandes", UIPanel.PanelType.Text, player, () => OrderBoard(player, restaurant));
-            panel.TextLines.Add(Size(Bold(Color("EN PRÉPARATION", Colors.Orange)), 22));
-            panel.TextLines.Add(Size(Bold(Numbers(active.Where(o => o.Status != DelivStatus.Prete))), 26));
+            panel.TextLines.Add(Bold(Color("EN PRÉPARATION", Colors.Orange)));
+            panel.TextLines.Add(Bold(Numbers(active.Where(o => o.Status != DelivStatus.Prete))));
             panel.TextLines.Add("");
-            panel.TextLines.Add(Size(Bold(Color("PRÊTES - VENEZ AU COMPTOIR", Colors.Success)), 22));
-            panel.TextLines.Add(Size(Bold(Numbers(active.Where(o => o.Status == DelivStatus.Prete))), 26));
+            panel.TextLines.Add(Bold(Color("PRÊTES - VENEZ AU COMPTOIR", Colors.Success)));
+            panel.TextLines.Add(Bold(Numbers(active.Where(o => o.Status == DelivStatus.Prete))));
 
             panel.AddButton("Actualiser", _ => panel.Refresh());
             panel.PreviousButton();
@@ -1157,7 +1156,7 @@ namespace DelivLife
             }
             foreach (DelivOrder order in orders)
             {
-                panel.AddTabLine($"N° {Bold(order.TicketLabel)} • {DelivStatus.Colored(order.Status)}<br>{Size(Color($"{order.ItemCount} article(s) • {Elapsed(order.CreatedAt)}", Colors.Grey), 13)}",
+                panel.AddTabLine($"N° {Bold(order.TicketLabel)} • {DelivStatus.Colored(order.Status)} • {order.ItemCount} art.",
                     Money(order.Total), IconUtils.Others.None.Id, _ =>
                     {
                         if (order.Status == DelivStatus.Prete)
@@ -1495,9 +1494,7 @@ namespace DelivLife
 
         private static string OrderLineLabel(DelivOrder order)
         {
-            string head = $"N° {Bold(order.TicketLabel)} • {DelivStatus.Colored(order.Status)} • {order.ClientName}";
-            string sub = $"{order.ItemCount} art. • {order.ModeLabel} • {order.SourceLabel} • {Hour(order.CreatedAt)} ({Elapsed(order.CreatedAt)})";
-            return head + "<br>" + Size(Color(sub, Colors.Grey), 13);
+            return $"N° {Bold(order.TicketLabel)} • {DelivStatus.Colored(order.Status)} • {Truncate(order.ClientName ?? "-", 18)} • {Hour(order.CreatedAt)}";
         }
 
         /// <summary>Commandes à traiter, les plus anciennes d'abord.</summary>
@@ -1535,7 +1532,7 @@ namespace DelivLife
             Panel panel = PanelHelper.Create($"Commande n°{order.TicketLabel} - {order.StatusLabel}", UIPanel.PanelType.Text, player,
                 () => OrderDetail(player, orderId));
 
-            panel.TextLines.Add(Size(Bold($"N° {order.TicketLabel}"), 30) + "   " + DelivStatus.Colored(order.Status));
+            panel.TextLines.Add(Bold($"N° {order.TicketLabel}") + "   " + DelivStatus.Colored(order.Status));
             panel.TextLines.Add($"Client : {Bold(order.ClientName)}{(GetOnlineCharacter(order.ClientCharacterId) == null ? Color(" (hors ligne)", Colors.Grey) : "")}");
             panel.TextLines.Add($"{order.ModeLabel} • {order.SourceLabel} • {order.PaymentLabel} • {Hour(order.CreatedAt)} ({Elapsed(order.CreatedAt)})");
             if (!string.IsNullOrEmpty(order.EmployeeName)) panel.TextLines.Add($"Employé : {order.EmployeeName}");
@@ -1754,12 +1751,12 @@ namespace DelivLife
 
             if (products.Count == 0)
             {
-                panel.AddTabLine("La carte est vide : ajoutez un produit ou une carte d'exemple", "", IconUtils.Others.None.Id, _ => { });
+                panel.AddTabLine("Carte vide : ajoutez un produit", "", IconUtils.Others.None.Id, _ => { });
             }
             foreach (DelivProduct product in products)
             {
                 string state = product.IsAvailable ? Color("disponible", Colors.Success) : Color("rupture", Colors.Error);
-                string label = $"{Bold(product.Name)}<br>{Size($"{DelivCategory.Singular(product.Category)} • {state}", 13)}";
+                string label = $"{Bold(product.Name)} • {DelivCategory.Singular(product.Category)} • {state}";
                 panel.AddTabLine(label, Money(product.Price), product.GetIcon(), _ => ProductEditor(player, bizId, product.Id));
             }
 
@@ -2080,15 +2077,15 @@ namespace DelivLife
             panel.AddTabLine($"{Color("Bornes ouvertes :", Colors.Info)} {OnOff(r.IsOpen)}", _ => Toggle(() => r.IsOpen = !r.IsOpen));
             panel.AddTabLine($"{Color("Paiement en espèces :", Colors.Info)} {OnOff(r.AcceptCash)}", _ => Toggle(() => r.AcceptCash = !r.AcceptCash));
             panel.AddTabLine($"{Color("Paiement par carte :", Colors.Info)} {OnOff(r.AcceptCard)}", _ => Toggle(() => r.AcceptCard = !r.AcceptCard));
-            panel.AddTabLine($"{Color("Commandes seulement si un employé est en service :", Colors.Info)} {OnOff(r.RequireStaffOnDuty)}",
+            panel.AddTabLine($"{Color("Employé en service requis :", Colors.Info)} {OnOff(r.RequireStaffOnDuty)}",
                 _ => Toggle(() => r.RequireStaffOnDuty = !r.RequireStaffOnDuty));
-            panel.AddTabLine($"{Color("Remettre les objets du jeu au client :", Colors.Info)} {OnOff(r.GiveItems)}", _ => Toggle(() => r.GiveItems = !r.GiveItems));
-            panel.AddTabLine($"{Color("Objets pris dans l'inventaire de l'employé :", Colors.Info)} {OnOff(r.TakeItemsFromEmployee)}",
+            panel.AddTabLine($"{Color("Remise des objets :", Colors.Info)} {OnOff(r.GiveItems)}", _ => Toggle(() => r.GiveItems = !r.GiveItems));
+            panel.AddTabLine($"{Color("Objets pris chez l'employé :", Colors.Info)} {OnOff(r.TakeItemsFromEmployee)}",
                 _ => Toggle(() => r.TakeItemsFromEmployee = !r.TakeItemsFromEmployee));
             panel.AddTabLine($"{Color("Webhook Discord :", Colors.Info)} {(string.IsNullOrWhiteSpace(r.WebhookUrl) ? Color("non configuré", Colors.Grey) : Color("configuré", Colors.Success))}",
                 _ => EditWebhook(player, r));
-            panel.AddTabLine($"{Color("Remettre la numérotation des tickets à 001", Colors.Warning)} (actuel : {r.TicketCounter:000})", _ => Toggle(() => r.TicketCounter = 0));
-            panel.AddTabLine(Color("Purger l'historique (commandes clôturées de plus de 7 jours)", Colors.Warning), async _ =>
+            panel.AddTabLine($"{Color("Remettre les tickets à 001", Colors.Warning)} (actuel : {r.TicketCounter:000})", _ => Toggle(() => r.TicketCounter = 0));
+            panel.AddTabLine(Color("Purger l'historique (+7 jours)", Colors.Warning), async _ =>
             {
                 long limit = Now() - 7 * 86400;
                 int id = r.BizId;
@@ -2235,7 +2232,7 @@ namespace DelivLife
             panel.AddTabLine("Menu employé (commandes, caisse...)", _ => EmployeeHome(player, bizId));
             panel.AddTabLine("Gestion de la carte", _ => MenuManager(player, bizId));
             panel.AddTabLine("Paramètres", _ => RestaurantSettings(player, bizId));
-            panel.AddTabLine(Color("Retirer l'accès (supprime la carte et les commandes)", Colors.Error), _ => AdminRemoveRestaurant(player, bizId));
+            panel.AddTabLine(Color("Retirer l'accès", Colors.Error), _ => AdminRemoveRestaurant(player, bizId));
 
             panel.NextButton("Sélectionner", () => panel.SelectTab());
             panel.PreviousButton();
