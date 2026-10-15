@@ -18,9 +18,26 @@ numérotés, paiement en espèces ou par carte et notifications Discord (webhook
 AAMenu → **Administration → Plugins → DelivLife** (ou `/delivadmin`) :
 1. **Autoriser une entreprise** : choisir la société qui aura accès à DelivLife (plusieurs restaurants possibles,
    chacun avec sa carte, ses bornes et ses tickets).
-2. **Bornes** → *Nouveau modèle* → choisir le restaurant → nom → *Placer ici* : point bleu « borne de commande »
-   pour les clients. Aussi disponible dans **Administration → Points bleus**.
-3. **Comptoirs** (optionnel) : point bleu qui ouvre directement le menu employé pour le personnel du restaurant.
+2. **Points clients** / **Points employés** → *Nouveau modèle* → choisir le restaurant → choisir la
+   **fonction** du point → nom → *Placer ici*. Aussi disponibles dans **Administration → Points bleus**.
+3. Placer autant de points que voulu, avec les fonctions suivantes :
+
+   | Points clients | Rôle |
+   |---|---|
+   | Borne de commande | commander et payer, ticket numéroté |
+   | Écran des commandes | numéros en préparation / prêts |
+   | Retrait des commandes | le client signale qu'il attend sa commande prête (le personnel est prévenu) |
+   | Suivi de mes commandes | statut de ses commandes dans ce restaurant |
+
+   | Points employés (réservés au personnel) | Rôle |
+   |---|---|
+   | Comptoir | menu employé complet |
+   | Caisse enregistreuse | encaisser un client au comptoir |
+   | Écran cuisine | commandes en cours (prendre en charge, prête, remettre, annuler) |
+   | Pointeuse | prise / fin de service |
+   | Gestion de la carte | carte du restaurant (patron et gérants) |
+   | Bureau | historique du jour et statistiques |
+
 4. Depuis la fiche d'un restaurant, le staff peut aussi gérer sa carte, ses paramètres ou retirer l'accès.
 
 ## Côté client (borne de commande)

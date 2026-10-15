@@ -69,8 +69,8 @@ namespace DelivLife
             if (AAMenu.AAMenu.menu != null)
             {
                 // Administration > Points bleus
-                AAMenu.AAMenu.menu.AddBuilder(PluginInformations, "DelivLife - Borne de commande", kiosk, this);
-                AAMenu.AAMenu.menu.AddBuilder(PluginInformations, "DelivLife - Comptoir employés", counter, this);
+                AAMenu.AAMenu.menu.AddBuilder(PluginInformations, "DelivLife - Points clients", kiosk, this);
+                AAMenu.AAMenu.menu.AddBuilder(PluginInformations, "DelivLife - Points employés", counter, this);
 
                 // Métier : visible dans toutes les sociétés, accès vérifié à l'ouverture
                 AAMenu.Menu.AddBizTabLine(PluginInformations, new List<Activity.Type> { Activity.Type.None }, null,
@@ -1055,6 +1055,125 @@ namespace DelivLife
 
             panel.AddButton("Actualiser", _ => panel.Refresh());
             panel.PreviousButton();
+            panel.CloseButton();
+            panel.Display();
+        }
+    }
+}
+
+namespace DelivLife
+{
+    // ======================================================================
+    //  POINTS NATIFS : ouverture selon la fonction du point
+    // ======================================================================
+    public partial class DelivLifePlugin
+    {
+        public void OpenClientPoint(Player player, int bizId, int function)
+        {
+            switch (function)
+            {
+                case DelivKiosk.Board: OpenBoardPoint(player, bizId); break;
+                case DelivKiosk.Pickup: PickupPoint(player, bizId); break;
+                case DelivKiosk.Tracking: ClientTracking(player, bizId); break;
+                default: KioskHome(player, bizId); break;
+            }
+        }
+
+        public async void OpenEmployeePoint(Player player, int bizId, int function)
+        {
+            DelivRestaurant restaurant = await GetRestaurantByBiz(bizId);
+            if (restaurant == null)
+            {
+                Notify(player, "Ce point n'est relié à aucun restaurant.", NotificationManager.Type.Error);
+                return;
+            }
+
+            switch (function)
+            {
+                case DelivCounter.Register:
+                    CategoryMenu(player, restaurant, true);
+                    break;
+                case DelivCounter.Kitchen:
+                    OrdersList(player, bizId);
+                    break;
+                case DelivCounter.Duty:
+                    ToggleDuty(player, restaurant);
+                    break;
+                case DelivCounter.Menu:
+                    if (await IsManager(player, restaurant)) MenuManager(player, bizId);
+                    else Notify(player, "Réservé au patron et aux gérants.", NotificationManager.Type.Warning);
+                    break;
+                case DelivCounter.Stats:
+                    OfficePoint(player, bizId);
+                    break;
+                default:
+                    EmployeeHome(player, bizId);
+                    break;
+            }
+        }
+
+        private void ToggleDuty(Player player, DelivRestaurant restaurant)
+        {
+            int id = player.character.Id;
+            if (onDuty.Remove(id))
+            {
+                Notify(player, $"Fin de service chez {restaurant.Name}.", NotificationManager.Type.Info);
+                return;
+            }
+            onDuty.Add(id);
+            Notify(player, $"Prise de service chez {restaurant.Name} : vous recevrez les nouvelles commandes.", NotificationManager.Type.Success);
+        }
+
+        private async void OpenBoardPoint(Player player, int bizId)
+        {
+            DelivRestaurant restaurant = await GetRestaurantByBiz(bizId);
+            if (restaurant != null) OrderBoard(player, restaurant);
+        }
+
+        /// <summary>Bureau employé : historique et statistiques.</summary>
+        private void OfficePoint(Player player, int bizId)
+        {
+            Panel panel = PanelHelper.Create("DelivLife - Bureau", UIPanel.PanelType.Tab, player, () => OfficePoint(player, bizId));
+            panel.AddTabLine("Historique du jour", _ => OrdersHistory(player, bizId));
+            panel.AddTabLine("Statistiques", _ => Statistics(player, bizId));
+            panel.NextButton("Sélectionner", () => panel.SelectTab());
+            panel.CloseButton();
+            panel.Display();
+        }
+
+        /// <summary>Point de retrait : le client signale qu'il attend sa commande prête au comptoir.</summary>
+        public async void PickupPoint(Player player, int bizId)
+        {
+            DelivRestaurant restaurant = await GetRestaurantByBiz(bizId);
+            if (restaurant == null) return;
+            int characterId = player.character.Id;
+            List<DelivOrder> orders = (await DelivOrder.Query(o => o.BizId == bizId && o.ClientCharacterId == characterId && o.Status <= DelivStatus.Prete))
+                .OrderBy(o => o.CreatedAt).ToList();
+
+            Panel panel = PanelHelper.Create($"{restaurant.Name} - Retrait des commandes", UIPanel.PanelType.TabPrice, player, () => PickupPoint(player, bizId));
+            if (orders.Count == 0)
+            {
+                panel.AddTabLine("Vous n'avez aucune commande en cours ici", "", IconUtils.Others.None.Id, _ => { });
+            }
+            foreach (DelivOrder order in orders)
+            {
+                panel.AddTabLine($"N° {Bold(order.TicketLabel)} • {DelivStatus.Colored(order.Status)}<br>{Size(Color($"{order.ItemCount} article(s) • {Elapsed(order.CreatedAt)}", Colors.Grey), 13)}",
+                    Money(order.Total), IconUtils.Others.None.Id, _ =>
+                    {
+                        if (order.Status == DelivStatus.Prete)
+                        {
+                            NotifyEmployees(bizId, $"{player.FullName} attend sa commande n°{order.TicketLabel} au point de retrait.", NotificationManager.Type.Warning);
+                            Notify(player, $"Le personnel est prévenu, votre commande n°{order.TicketLabel} va vous être remise.", NotificationManager.Type.Success);
+                        }
+                        else
+                        {
+                            Notify(player, $"Votre commande n°{order.TicketLabel} n'est pas encore prête ({order.StatusLabel.ToLower()}).", NotificationManager.Type.Info);
+                        }
+                    });
+            }
+            if (orders.Count > 0) panel.AddButton("Je suis là", _ => panel.SelectTab());
+            panel.AddButton("Actualiser", _ => panel.Refresh());
+            panel.NextButton("Écran des commandes", () => OrderBoard(player, restaurant));
             panel.CloseButton();
             panel.Display();
         }
@@ -2067,8 +2186,8 @@ namespace DelivLife
 
             if (restaurants.Count > 0) panel.NextButton("Gérer", () => panel.SelectTab());
             panel.NextButton(Color("Autoriser une entreprise", Colors.Success), () => AdminAddRestaurant(player));
-            panel.NextButton("Bornes", () => new DelivKiosk(false) { Context = this }.CreateOrGenerate(player));
-            panel.NextButton("Comptoirs", () => new DelivCounter(false) { Context = this }.CreateOrGenerate(player));
+            panel.NextButton("Points clients", () => new DelivKiosk(false) { Context = this }.CreateOrGenerate(player));
+            panel.NextButton("Points employés", () => new DelivCounter(false) { Context = this }.CreateOrGenerate(player));
             panel.PreviousButton();
             panel.CloseButton();
             panel.Display();
@@ -2163,6 +2282,9 @@ namespace DelivLife
 
         public int BizId { get; set; }
 
+        /// <summary>Fonction du point (voir FunctionNames).</summary>
+        public int Function { get; set; }
+
         [Ignore]
         public string TypeName { get; set; } = typeof(T).Name;
 
@@ -2170,6 +2292,12 @@ namespace DelivLife
         public ModKit.ModKit Context { get; set; }
 
         protected abstract string Label { get; }
+
+        /// <summary>Fonctions possibles pour ce type de point (l'index est stocké dans Function).</summary>
+        protected abstract string[] FunctionNames { get; }
+
+        protected string FunctionName(int function) =>
+            function >= 0 && function < FunctionNames.Length ? FunctionNames[function] : FunctionNames[0];
 
         protected DelivLifePlugin Plugin => DelivLifePlugin.Instance;
 
@@ -2182,6 +2310,7 @@ namespace DelivLife
             TypeName = typeof(T).Name;
             PatternName = result?.PatternName;
             BizId = result?.BizId ?? 0;
+            Function = result?.Function ?? 0;
         }
 
         private T Copy(T source)
@@ -2203,7 +2332,7 @@ namespace DelivLife
             foreach (T pattern in patterns)
             {
                 string restaurant = names.TryGetValue(pattern.BizId, out string n) ? n : Color("restaurant supprimé", Colors.Error);
-                panel.AddTabLine($"[{pattern.Id}] {pattern.PatternName} {Color($"({restaurant})", Colors.Grey)}", async _ =>
+                panel.AddTabLine($"[{pattern.Id}] {pattern.PatternName} {Color($"({FunctionName(pattern.Function)} - {restaurant})", Colors.Grey)}", async _ =>
                 {
                     if (await Context.PointHelper.CreateNPoint(player, Copy(pattern)))
                         DelivLifePlugin.Notify(player, $"{Label} « {pattern.PatternName} » placé(e) à votre position.", NotificationManager.Type.Success);
@@ -2225,7 +2354,7 @@ namespace DelivLife
             if (restaurants.Count == 0) panel.AddTabLine("Autorisez d'abord une entreprise (/delivadmin)", _ => { });
             foreach (DelivRestaurant r in restaurants)
             {
-                panel.AddTabLine($"[{r.BizId}] {r.Name}", _ => SetPatternName(player, r));
+                panel.AddTabLine($"[{r.BizId}] {r.Name}", _ => SetPatternFunction(player, r));
             }
             if (restaurants.Count > 0) panel.AddButton("Choisir", _ => panel.SelectTab());
             panel.PreviousButton();
@@ -2233,16 +2362,32 @@ namespace DelivLife
             panel.Display();
         }
 
-        private void SetPatternName(Player player, DelivRestaurant restaurant)
+        /// <summary>Choix de la fonction du point (ex. borne, caisse, écran cuisine...).</summary>
+        private void SetPatternFunction(Player player, DelivRestaurant restaurant)
         {
-            Panel panel = Context.PanelHelper.Create($"Nouveau modèle - {Label} - Nom", UIPanel.PanelType.Input, player, () => SetPatternName(player, restaurant));
-            panel.TextLines.Add($"Nom du modèle ({Label.ToLower()} de « {restaurant.Name} »)");
-            panel.SetInputPlaceholder($"{Label} {restaurant.Name}");
+            Panel panel = Context.PanelHelper.Create($"Nouveau modèle - {Label} - Fonction", UIPanel.PanelType.Tab, player, () => SetPatternFunction(player, restaurant));
+            for (int i = 0; i < FunctionNames.Length; i++)
+            {
+                int function = i;
+                panel.AddTabLine(FunctionNames[i], _ => SetPatternName(player, restaurant, function));
+            }
+            panel.AddButton("Choisir", _ => panel.SelectTab());
+            panel.PreviousButton();
+            panel.CloseButton();
+            panel.Display();
+        }
+
+        private void SetPatternName(Player player, DelivRestaurant restaurant, int function)
+        {
+            string defaultName = $"{FunctionName(function)} - {restaurant.Name}";
+            Panel panel = Context.PanelHelper.Create($"Nouveau modèle - {Label} - Nom", UIPanel.PanelType.Input, player, () => SetPatternName(player, restaurant, function));
+            panel.TextLines.Add($"Nom du modèle ({FunctionName(function).ToLower()} de « {restaurant.Name} »)");
+            panel.SetInputPlaceholder(defaultName);
             panel.PreviousButtonWithAction("Créer", async () =>
             {
                 string name = panel.inputText?.Trim();
-                if (string.IsNullOrEmpty(name)) name = $"{Label} {restaurant.Name}";
-                T pattern = new T { PatternName = name, BizId = restaurant.BizId };
+                if (string.IsNullOrEmpty(name)) name = defaultName;
+                T pattern = new T { PatternName = name, BizId = restaurant.BizId, Function = function };
                 if (!await pattern.Save()) return false;
                 DelivLifePlugin.Notify(player, $"Modèle « {name} » créé. Choisissez-le puis « Placer ici ».", NotificationManager.Type.Success);
                 return true;
@@ -2261,7 +2406,7 @@ namespace DelivLife
             if (patterns.Count == 0) panel.AddTabLine("Aucun modèle", _ => { });
             foreach (T pattern in patterns)
             {
-                panel.AddTabLine($"[{pattern.Id}] {pattern.PatternName}", async _ =>
+                panel.AddTabLine($"[{pattern.Id}] {pattern.PatternName} {Color($"({FunctionName(pattern.Function)})", Colors.Grey)}", async _ =>
                 {
                     if (action != "delete") return;
                     await Context.PointHelper.DeleteNPointsByPattern(player, Copy(pattern));
@@ -2284,7 +2429,7 @@ namespace DelivLife
             Dictionary<int, string> names = (await QueryAll()).ToDictionary(p => p.Id, p => p.PatternName);
             string action = "";
 
-            Panel panel = Context.PanelHelper.Create($"DelivLife - {Label}s placé(e)s", UIPanel.PanelType.Tab, player, async () => await GetNPoints(player));
+            Panel panel = Context.PanelHelper.Create($"DelivLife - {Label}s placés", UIPanel.PanelType.Tab, player, async () => await GetNPoints(player));
             if (points.Count == 0) panel.AddTabLine("Aucun point placé", _ => { });
             foreach (NPoint point in points)
             {
@@ -2320,38 +2465,74 @@ namespace DelivLife
         }
     }
 
-    /// <summary>Borne de commande : les clients composent et paient leur commande.</summary>
+    /// <summary>Points natifs côté client.</summary>
     public class DelivKiosk : DelivPointBase<DelivKiosk>
     {
+        public const int Kiosk = 0;
+        public const int Board = 1;
+        public const int Pickup = 2;
+        public const int Tracking = 3;
+
+        private static readonly string[] Functions =
+        {
+            "Borne de commande",
+            "Écran des commandes",
+            "Retrait des commandes",
+            "Suivi de mes commandes"
+        };
+
         public DelivKiosk() { }
 
         public DelivKiosk(bool isCreated) { TypeName = nameof(DelivKiosk); }
 
-        protected override string Label => "Borne";
+        protected override string Label => "Point client";
+
+        protected override string[] FunctionNames => Functions;
 
         public override void OnPlayerTrigger(Player player)
         {
-            // Le modèle est partagé : on capture le restaurant tout de suite
+            // Le modèle est partagé : on capture ses valeurs tout de suite
             int bizId = BizId;
-            Plugin?.KioskHome(player, bizId);
+            int function = Function;
+            Plugin?.OpenClientPoint(player, bizId, function);
         }
     }
 
-    /// <summary>Comptoir : ouvre le menu employé pour les membres du restaurant.</summary>
+    /// <summary>Points natifs côté employés (réservés au personnel du restaurant).</summary>
     public class DelivCounter : DelivPointBase<DelivCounter>
     {
+        public const int Full = 0;
+        public const int Register = 1;
+        public const int Kitchen = 2;
+        public const int Duty = 3;
+        public const int Menu = 4;
+        public const int Stats = 5;
+
+        private static readonly string[] Functions =
+        {
+            "Comptoir (menu employé complet)",
+            "Caisse enregistreuse",
+            "Écran cuisine (commandes en cours)",
+            "Pointeuse (prise / fin de service)",
+            "Gestion de la carte (gérant)",
+            "Bureau (historique et statistiques)"
+        };
+
         public DelivCounter() { }
 
         public DelivCounter(bool isCreated) { TypeName = nameof(DelivCounter); }
 
-        protected override string Label => "Comptoir";
+        protected override string Label => "Point employé";
+
+        protected override string[] FunctionNames => Functions;
 
         public override void OnPlayerTrigger(Player player)
         {
             int bizId = BizId;
+            int function = Function;
             if (Plugin == null) return;
             if (player.character != null && player.character.BizId == bizId || player.IsAdmin && player.serviceAdmin)
-                Plugin.EmployeeHome(player, bizId);
+                Plugin.OpenEmployeePoint(player, bizId, function);
             else
                 DelivLifePlugin.Notify(player, "Réservé au personnel du restaurant.", NotificationManager.Type.Warning);
         }
