@@ -1,5 +1,7 @@
 # Occaz By Loris Strange
 
+> **Created by Loris Strange**
+
 Plugin Nova-Life **100 % AAMenu** : vente de véhicules d'occasion **entre joueurs**
 (ce n'est **pas** un métier, aucune entreprise n'est nécessaire).
 

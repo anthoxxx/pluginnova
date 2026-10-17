@@ -6,7 +6,12 @@
     <AssemblyName>OccazByLorisStrange</AssemblyName>
     <RootNamespace>OccazByLorisStrange</RootNamespace>
     <Version>1.0.0</Version>
-    <Authors>anthoxxx</Authors>
+    <Authors>Loris Strange</Authors>
+    <Company>Loris Strange</Company>
+    <Product>Occaz By Loris Strange</Product>
+    <AssemblyTitle>Occaz By Loris Strange</AssemblyTitle>
+    <Description>Vente de véhicules d'occasion entre joueurs - Created by Loris Strange</Description>
+    <Copyright>Created by Loris Strange</Copyright>
     <!-- Dossier contenant TOUTES les DLL nécessaires (voir libs/README.md) -->
     <LibsPath Condition="'$(LibsPath)' == ''">$(MSBuildThisFileDirectory)libs</LibsPath>
   </PropertyGroup>

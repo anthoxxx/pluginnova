@@ -33,7 +33,8 @@ namespace OccazByLorisStrange
     /// </summary>
     public class OccazPlugin : ModKit.ModKit
     {
-        public const string Title = "Occaz";
+        public const string Title = "Occaz by Loris Strange";
+        public const string Credit = "Created by Loris Strange";
 
         public static OccazPlugin Instance { get; private set; }
 
@@ -45,7 +46,7 @@ namespace OccazByLorisStrange
 
         public OccazPlugin(IGameAPI api) : base(api)
         {
-            PluginInformations = new PluginInformations(AssemblyHelper.GetName(), "1.0.0", "anthoxxx (Loris Strange)");
+            PluginInformations = new PluginInformations(AssemblyHelper.GetName(), "1.0.0", "Loris Strange");
             Instance = this;
         }
 
@@ -84,7 +85,7 @@ namespace OccazByLorisStrange
 
             await OccazService.LoadCache();
 
-            Logger.LogSuccess($"{PluginInformations.SourceName} v{PluginInformations.Version}", "initialisé (Occaz By Loris Strange)");
+            Logger.LogSuccess($"{PluginInformations.SourceName} v{PluginInformations.Version}", $"initialisé - {Credit}");
         }
 
         public void LoadConfig()
@@ -138,7 +139,7 @@ namespace OccazByLorisStrange
         /// <summary>URL du webhook Discord (laisser vide pour désactiver).</summary>
         public string WebhookUrl { get; set; } = "";
         /// <summary>Nom affiché en pied des messages Discord.</summary>
-        public string WebhookFooter { get; set; } = "Occaz By Loris Strange";
+        public string WebhookFooter { get; set; } = "Occaz - Created by Loris Strange";
         /// <summary>Commission prélevée sur le prix de vente (en %), elle disparaît (taxe).</summary>
         public double CommissionPercent { get; set; } = 5;
         /// <summary>Frais fixes payés par le vendeur pour publier une annonce.</summary>
@@ -715,6 +716,26 @@ namespace OccazByLorisStrange
 
         private static string M(double amount) => OccazService.Money(amount);
 
+        /// <summary>Affiche le panneau avec la signature « Created by Loris Strange » en bas.</summary>
+        public static void Show(Panel panel)
+        {
+            string credit = Color(OccazPlugin.Credit, Colors.Grey);
+            switch (panel.type)
+            {
+                case UIPanel.PanelType.Tab:
+                    panel.AddTabLine(credit, _ => { });
+                    break;
+                case UIPanel.PanelType.TabPrice:
+                    panel.AddTabLine(credit, "", OccazService.Icon(0), _ => { });
+                    break;
+                default:
+                    // Panneau texte : 6 lignes maximum, sinon le texte passe sous le titre
+                    if (panel.TextLines.Count < 6) panel.TextLines.Add(credit);
+                    break;
+            }
+            panel.Display();
+        }
+
         // ---------- Point bleu ----------
 
         public static async void Main(Player player, string pointName)
@@ -732,7 +753,7 @@ namespace OccazByLorisStrange
             panel.AddTabLine("Comment ça marche ?", _ => Help(player));
             panel.NextButton("Ouvrir", () => panel.SelectTab());
             panel.CloseButton();
-            panel.Display();
+            OccazMenus.Show(panel);
         }
 
         private static void Help(Player player)
@@ -742,12 +763,11 @@ namespace OccazByLorisStrange
             panel.TextLines.Add(Bold("VENDRE") + " : garez-vous ici, puis Vendre.");
             panel.TextLines.Add($"Exposée et verrouillée {Config.ListingDurationHours} h max.");
             panel.TextLines.Add($"Frais {M(Config.ListingFee)} - commission {Config.CommissionPercent}%.");
-            panel.TextLines.Add("Paiement en banque, même hors ligne.");
             panel.TextLines.Add(Bold("ACHETER") + " : AAMenu > Interactions");
-            panel.TextLines.Add("près du véhicule, ou le Catalogue.");
+            panel.TextLines.Add("ou Catalogue des occasions.");
             panel.PreviousButton();
             panel.CloseButton();
-            panel.Display();
+            OccazMenus.Show(panel);
         }
 
         // ---------- Vente ----------
@@ -771,7 +791,7 @@ namespace OccazByLorisStrange
             if (vehicles.Count > 0) panel.NextButton("Choisir", () => panel.SelectTab());
             panel.PreviousButton();
             panel.CloseButton();
-            panel.Display();
+            OccazMenus.Show(panel);
         }
 
         private static void SellModel(Player player, OccazListing draft)
@@ -788,7 +808,7 @@ namespace OccazByLorisStrange
             });
             panel.PreviousButton();
             panel.CloseButton();
-            panel.Display();
+            OccazMenus.Show(panel);
         }
 
         private static void SellPrice(Player player, OccazListing draft)
@@ -810,7 +830,7 @@ namespace OccazByLorisStrange
             });
             panel.PreviousButton();
             panel.CloseButton();
-            panel.Display();
+            OccazMenus.Show(panel);
         }
 
         private static void SellMileage(Player player, OccazListing draft)
@@ -831,7 +851,7 @@ namespace OccazByLorisStrange
             });
             panel.PreviousButton();
             panel.CloseButton();
-            panel.Display();
+            OccazMenus.Show(panel);
         }
 
         private static void SellCondition(Player player, OccazListing draft)
@@ -849,7 +869,7 @@ namespace OccazByLorisStrange
             panel.NextButton("Choisir", () => panel.SelectTab());
             panel.PreviousButton();
             panel.CloseButton();
-            panel.Display();
+            OccazMenus.Show(panel);
         }
 
         private static void SellDescription(Player player, OccazListing draft)
@@ -864,7 +884,7 @@ namespace OccazByLorisStrange
             });
             panel.PreviousButton();
             panel.CloseButton();
-            panel.Display();
+            OccazMenus.Show(panel);
         }
 
         private static void SellRecap(Player player, OccazListing draft)
@@ -880,7 +900,7 @@ namespace OccazByLorisStrange
             panel.CloseButtonWithAction("Publier l'annonce", async () => await OccazService.CreateListing(player, draft));
             panel.PreviousButton("Modifier");
             panel.CloseButton("Annuler");
-            panel.Display();
+            OccazMenus.Show(panel);
         }
 
         // ---------- Achat ----------
@@ -929,7 +949,7 @@ namespace OccazByLorisStrange
             if (listings.Count > 0) panel.NextButton("Voir", () => panel.SelectTab());
             panel.PreviousButton();
             panel.CloseButton();
-            panel.Display();
+            OccazMenus.Show(panel);
         }
 
         /// <summary>Ligne « nom | valeur » d'un panneau TabPrice (non cliquable).</summary>
@@ -962,7 +982,7 @@ namespace OccazByLorisStrange
             panel.TextLines.Add(l.Description);
             panel.PreviousButton();
             panel.CloseButton();
-            panel.Display();
+            OccazMenus.Show(panel);
         }
 
         public static void Details(Player player, OccazListing listing)
@@ -986,7 +1006,7 @@ namespace OccazByLorisStrange
             panel.AddButton("Localiser", _ => Locate(player, listing));
             panel.PreviousButton();
             panel.CloseButton();
-            panel.Display();
+            OccazMenus.Show(panel);
         }
 
         private static void Locate(Player player, OccazListing listing)
@@ -1017,7 +1037,7 @@ namespace OccazByLorisStrange
                 panel.CloseButtonWithAction("Payer par carte", async () => await OccazService.Buy(player, listing.Id, true, offer));
             panel.PreviousButton();
             panel.CloseButton();
-            panel.Display();
+            OccazMenus.Show(panel);
         }
 
         private static void Offer(Player player, OccazListing listing)
@@ -1032,7 +1052,7 @@ namespace OccazByLorisStrange
                     : OccazService.Fail(player, "Montant invalide."));
             panel.PreviousButton();
             panel.CloseButton();
-            panel.Display();
+            OccazMenus.Show(panel);
         }
 
         private static async void MyOffers(Player player)
@@ -1066,7 +1086,7 @@ namespace OccazByLorisStrange
             if (offers.Count > 0) panel.NextButton("Ouvrir", () => panel.SelectTab());
             panel.PreviousButton();
             panel.CloseButton();
-            panel.Display();
+            OccazMenus.Show(panel);
         }
 
         // ---------- Gestion de ses annonces ----------
@@ -1098,7 +1118,7 @@ namespace OccazByLorisStrange
             if (listings.Count > 0) panel.NextButton("Gérer", () => panel.SelectTab());
             panel.PreviousButton();
             panel.CloseButton();
-            panel.Display();
+            OccazMenus.Show(panel);
         }
 
         private static async void ManageListing(Player player, OccazListing listing)
@@ -1114,7 +1134,7 @@ namespace OccazByLorisStrange
             panel.NextButton("Ouvrir", () => panel.SelectTab());
             panel.PreviousButton();
             panel.CloseButton();
-            panel.Display();
+            OccazMenus.Show(panel);
         }
 
         private static void EditPrice(Player player, OccazListing listing)
@@ -1128,7 +1148,7 @@ namespace OccazByLorisStrange
                     : OccazService.Fail(player, "Prix invalide."));
             panel.PreviousButton();
             panel.CloseButton();
-            panel.Display();
+            OccazMenus.Show(panel);
         }
 
         private static async void Offers(Player player, OccazListing listing)
@@ -1158,7 +1178,7 @@ namespace OccazByLorisStrange
             }
             panel.PreviousButton();
             panel.CloseButton();
-            panel.Display();
+            OccazMenus.Show(panel);
         }
 
         private static void ConfirmCancel(Player player, OccazListing listing)
@@ -1178,7 +1198,7 @@ namespace OccazByLorisStrange
             });
             panel.PreviousButton();
             panel.CloseButton();
-            panel.Display();
+            OccazMenus.Show(panel);
         }
 
         // ---------- Staff (AAMenu → Administration → Plugins) ----------
@@ -1220,7 +1240,7 @@ namespace OccazByLorisStrange
             panel.NextButton("Ouvrir", () => panel.SelectTab());
             panel.PreviousButton();
             panel.CloseButton();
-            panel.Display();
+            OccazMenus.Show(panel);
         }
 
         private static async void AdminParkings(Player player)
@@ -1270,7 +1290,7 @@ namespace OccazByLorisStrange
             }
             panel.PreviousButton();
             panel.CloseButton();
-            panel.Display();
+            OccazMenus.Show(panel);
         }
 
         private static void AdminAddParking(Player player)
@@ -1290,7 +1310,7 @@ namespace OccazByLorisStrange
             });
             panel.PreviousButton();
             panel.CloseButton();
-            panel.Display();
+            OccazMenus.Show(panel);
         }
 
         private static void SetFromPlayer(OccazParking parking, Player player)
@@ -1340,7 +1360,7 @@ namespace OccazByLorisStrange
             }
             panel.PreviousButton();
             panel.CloseButton();
-            panel.Display();
+            OccazMenus.Show(panel);
         }
 
         private static async void AdminHistory(Player player)
@@ -1356,7 +1376,7 @@ namespace OccazByLorisStrange
                     OccazService.Icon(l.ModelId), _ => { });
             panel.PreviousButton();
             panel.CloseButton();
-            panel.Display();
+            OccazMenus.Show(panel);
         }
 
         // ---------- Utilitaires ----------
@@ -1434,7 +1454,7 @@ namespace OccazByLorisStrange
             panel.NextButton("Modèles", async () => await GetPatternData(player, true));
             panel.NextButton("Points", async () => await GetNPoints(player));
             panel.CloseButton();
-            panel.Display();
+            OccazMenus.Show(panel);
         }
 
         public void SetPatternData(Player player)
@@ -1453,7 +1473,7 @@ namespace OccazByLorisStrange
             });
             panel.PreviousButton();
             panel.CloseButton();
-            panel.Display();
+            OccazMenus.Show(panel);
         }
 
         public async Task GetPatternData(Player player, bool forEdit)
@@ -1492,7 +1512,7 @@ namespace OccazByLorisStrange
             }
             panel.PreviousButton();
             panel.CloseButton();
-            panel.Display();
+            OccazMenus.Show(panel);
         }
 
         private void Rename(Player player, OccazPattern pattern)
@@ -1509,7 +1529,7 @@ namespace OccazByLorisStrange
             });
             panel.PreviousButton();
             panel.CloseButton();
-            panel.Display();
+            OccazMenus.Show(panel);
         }
 
         public async Task GetNPoints(Player player)
@@ -1552,7 +1572,7 @@ namespace OccazByLorisStrange
             }
             panel.PreviousButton();
             panel.CloseButton();
-            panel.Display();
+            OccazMenus.Show(panel);
         }
     }
 }
