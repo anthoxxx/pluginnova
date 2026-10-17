@@ -119,7 +119,7 @@ namespace OccazByLorisStrange
             // Véhicule en vente : personne ne monte dedans, pas même le vendeur
             vehicle.EjectAll();
             vehicle.NetworkisLocked = true;
-            player.Notify(Title, "Ce véhicule est en vente : vous ne pouvez pas monter dedans. Ouvrez AAMenu → Interactions pour voir l'annonce.",
+            player.Notify(Title, "Ce véhicule est en vente : vous ne pouvez pas monter dedans. Annonce : AAMenu > Interactions.",
                 NotificationManager.Type.Warning, 6f);
         }
 
@@ -622,7 +622,7 @@ namespace OccazByLorisStrange
 
             buyer.Notify(Title, $"Offre de {Money(amount)} envoyée au vendeur.", NotificationManager.Type.Success, 6f);
             FindOnline(listing.SellerCharacterId)?.Notify(Title,
-                $"{buyer.FullName} vous propose {Money(amount)} pour votre {listing.Model}. Répondez au point Occaz → Mes annonces.",
+                $"{buyer.FullName} vous propose {Money(amount)} pour votre {listing.Model}. Répondez au point Occaz > Mes annonces.",
                 NotificationManager.Type.Info, 10f);
             return true;
         }
@@ -637,7 +637,7 @@ namespace OccazByLorisStrange
             seller.Notify(Title, accept ? "Offre acceptée : l'acheteur peut maintenant acheter à ce prix." : "Offre refusée.",
                 NotificationManager.Type.Success, 6f);
             FindOnline(fresh.BuyerCharacterId)?.Notify(Title, accept
-                    ? $"Le vendeur a accepté votre offre de {Money(fresh.Amount)} pour le {listing.Model} ! Achetez-le au point Occaz → Mes offres."
+                    ? $"Le vendeur a accepté votre offre de {Money(fresh.Amount)} pour le {listing.Model} ! Achetez-le au point Occaz > Mes offres."
                     : $"Le vendeur a refusé votre offre de {Money(fresh.Amount)} pour le {listing.Model}.",
                 accept ? NotificationManager.Type.Success : NotificationManager.Type.Warning, 10f);
             return true;
@@ -737,12 +737,14 @@ namespace OccazByLorisStrange
 
         private static void Help(Player player)
         {
-            Panel panel = Context.PanelHelper.Create("Occaz - Comment ça marche ?", UIPanel.PanelType.Text, player, () => Help(player));
-            panel.TextLines.Add(Bold("Vendre :") + $" garez-vous près du point, choisissez votre véhicule et remplissez l'annonce.");
-            panel.TextLines.Add($"Le véhicule est exposé et verrouillé sur le parking Occaz pendant {Config.ListingDurationHours} h maximum.");
-            panel.TextLines.Add($"Frais d'annonce : {M(Config.ListingFee)} - commission sur la vente : {Config.CommissionPercent}%.");
-            panel.TextLines.Add("Le paiement arrive sur votre compte bancaire, même si vous êtes déconnecté.");
-            panel.TextLines.Add(Bold("Acheter :") + " approchez-vous d'un véhicule en vente → AAMenu → Interactions, ou utilisez le catalogue.");
+            // Panneau texte du jeu : 6 lignes courtes maximum, sinon le texte passe sous le titre
+            Panel panel = Context.PanelHelper.Create("Occaz - Aide", UIPanel.PanelType.Text, player, () => Help(player));
+            panel.TextLines.Add(Bold("VENDRE") + " : garez-vous ici, puis Vendre.");
+            panel.TextLines.Add($"Exposée et verrouillée {Config.ListingDurationHours} h max.");
+            panel.TextLines.Add($"Frais {M(Config.ListingFee)} - commission {Config.CommissionPercent}%.");
+            panel.TextLines.Add("Paiement en banque, même hors ligne.");
+            panel.TextLines.Add(Bold("ACHETER") + " : AAMenu > Interactions");
+            panel.TextLines.Add("près du véhicule, ou le Catalogue.");
             panel.PreviousButton();
             panel.CloseButton();
             panel.Display();
@@ -775,8 +777,8 @@ namespace OccazByLorisStrange
         private static void SellModel(Player player, OccazListing draft)
         {
             Panel panel = Context.PanelHelper.Create("Occaz - Annonce (1/5) : modèle", UIPanel.PanelType.Input, player, () => SellModel(player, draft));
-            panel.TextLines.Add($"Nom du modèle affiché dans l'annonce (plaque {draft.Plate}).");
-            panel.TextLines.Add(Color("Laissez vide pour utiliser le nom officiel : " + draft.RealModelName, Colors.Grey));
+            panel.TextLines.Add($"Nom du modèle ({draft.Plate})");
+            panel.TextLines.Add(Color("Vide = " + draft.RealModelName, Colors.Grey));
             panel.SetInputPlaceholder(draft.RealModelName);
             panel.NextButton("Suivant", () =>
             {
@@ -792,8 +794,8 @@ namespace OccazByLorisStrange
         private static void SellPrice(Player player, OccazListing draft)
         {
             Panel panel = Context.PanelHelper.Create("Occaz - Annonce (2/5) : prix", UIPanel.PanelType.Input, player, () => SellPrice(player, draft));
-            panel.TextLines.Add($"Prix de vente de votre {draft.Model} (entre {M(Config.MinPrice)} et {M(Config.MaxPrice)}).");
-            panel.TextLines.Add(Color($"Une commission de {Config.CommissionPercent}% sera retenue à la vente.", Colors.Warning));
+            panel.TextLines.Add($"Prix : {M(Config.MinPrice)} à {M(Config.MaxPrice)}");
+            panel.TextLines.Add(Color($"Commission : {Config.CommissionPercent}%", Colors.Warning));
             panel.SetInputPlaceholder("15000");
             panel.NextButton("Suivant", () =>
             {
@@ -814,7 +816,7 @@ namespace OccazByLorisStrange
         private static void SellMileage(Player player, OccazListing draft)
         {
             Panel panel = Context.PanelHelper.Create("Occaz - Annonce (3/5) : kilométrage", UIPanel.PanelType.Input, player, () => SellMileage(player, draft));
-            panel.TextLines.Add("Kilométrage du véhicule (en km).");
+            panel.TextLines.Add("Kilométrage (en km)");
             panel.SetInputPlaceholder("45000");
             panel.NextButton("Suivant", () =>
             {
@@ -853,7 +855,7 @@ namespace OccazByLorisStrange
         private static void SellDescription(Player player, OccazListing draft)
         {
             Panel panel = Context.PanelHelper.Create("Occaz - Annonce (5/5) : description", UIPanel.PanelType.Input, player, () => SellDescription(player, draft));
-            panel.TextLines.Add("Description libre (options, entretien, contact...). Facultatif.");
+            panel.TextLines.Add("Description (facultatif)");
             panel.SetInputPlaceholder("Vidange faite, jantes neuves, première main...");
             panel.NextButton("Suivant", () =>
             {
@@ -869,14 +871,11 @@ namespace OccazByLorisStrange
         {
             double commission = Math.Round(draft.Price * Config.CommissionPercent / 100.0);
 
-            Panel panel = Context.PanelHelper.Create("Occaz - Récapitulatif", UIPanel.PanelType.Text, player, () => SellRecap(player, draft));
+            Panel panel = Context.PanelHelper.Create("Occaz - Récapitulatif", UIPanel.PanelType.TabPrice, player, () => SellRecap(player, draft));
             AddListingLines(panel, draft);
-            panel.TextLines.Add("");
-            panel.TextLines.Add($"Frais d'annonce : {M(Config.ListingFee)} (espèces, payés maintenant)");
-            panel.TextLines.Add($"Vous toucherez : {Bold(M(draft.Price - commission))} (commission {M(commission)})");
-            panel.TextLines.Add(Color(Config.TeleportToParking
-                ? "Votre véhicule va être déplacé et verrouillé sur le parking Occaz."
-                : "Votre véhicule doit être garé sur une place libre du parking Occaz.", Colors.Warning));
+            Info(panel, draft, "Frais d'annonce (espèces)", M(Config.ListingFee));
+            Info(panel, draft, $"Commission {Config.CommissionPercent}%", M(commission));
+            Info(panel, draft, Bold("Vous toucherez"), Color(Bold(M(draft.Price - commission)), Colors.Success));
 
             panel.CloseButtonWithAction("Publier l'annonce", async () => await OccazService.CreateListing(player, draft));
             panel.PreviousButton("Modifier");
@@ -933,31 +932,48 @@ namespace OccazByLorisStrange
             panel.Display();
         }
 
+        /// <summary>Ligne « nom | valeur » d'un panneau TabPrice (non cliquable).</summary>
+        private static void Info(Panel panel, OccazListing l, string name, string value, Action<UIPanel> action = null)
+        {
+            panel.AddTabLine(name, value, OccazService.Icon(l.ModelId), action ?? (_ => { }));
+        }
+
+        /// <summary>Fiche de l'annonce, une information par ligne (le panneau texte est trop petit).</summary>
         private static void AddListingLines(Panel panel, OccazListing l)
         {
-            panel.TextLines.Add(Bold(Size(l.Model, 20)) + Color($"  ({l.RealModelName})", Colors.Grey));
-            panel.TextLines.Add($"Plaque : {l.Plate}");
-            panel.TextLines.Add($"Prix : {Color(Bold(M(l.Price)), Colors.Success)}");
-            panel.TextLines.Add($"Kilométrage : {l.Mileage:N0} km");
-            panel.TextLines.Add($"État : {l.Condition}");
-            if (!string.IsNullOrWhiteSpace(l.Description))
-                panel.TextLines.Add($"Description : {Italic(l.Description)}");
+            Info(panel, l, Bold(l.Model), Color(Bold(M(l.Price)), Colors.Success));
+            if (l.RealModelName != l.Model)
+                Info(panel, l, "Modèle officiel", l.RealModelName);
+            Info(panel, l, "Kilométrage", $"{l.Mileage:N0} km");
+            Info(panel, l, "État", l.Condition);
+            Info(panel, l, "Plaque", l.Plate);
             if (!string.IsNullOrEmpty(l.SellerName))
-                panel.TextLines.Add($"Vendeur : {l.SellerName}");
+                Info(panel, l, "Vendeur", l.SellerName);
             if (l.ExpiresAt > 0)
-                panel.TextLines.Add(Color($"Annonce valable jusqu'au {OccazService.Date(l.ExpiresAt)}", Colors.Grey));
+                Info(panel, l, "Fin de l'annonce", OccazService.Date(l.ExpiresAt));
+            if (!string.IsNullOrWhiteSpace(l.Description))
+                Info(panel, l, "Description", l.Description.Length > 25 ? l.Description.Substring(0, 25) + "..." : l.Description);
+        }
+
+        private static void Description(Player player, OccazListing l)
+        {
+            Panel panel = Context.PanelHelper.Create($"Occaz - Description", UIPanel.PanelType.Text, player, () => Description(player, l));
+            panel.TextLines.Add(Bold(l.Model));
+            panel.TextLines.Add(l.Description);
+            panel.PreviousButton();
+            panel.CloseButton();
+            panel.Display();
         }
 
         public static void Details(Player player, OccazListing listing)
         {
             bool isSeller = listing.SellerCharacterId == player.character.Id;
 
-            Panel panel = Context.PanelHelper.Create($"Occaz - {listing.Model}", UIPanel.PanelType.Text, player, () => Details(player, listing));
+            Panel panel = Context.PanelHelper.Create($"Occaz - {listing.Model}", UIPanel.PanelType.TabPrice, player, () => Details(player, listing));
             AddListingLines(panel, listing);
 
             if (isSeller)
             {
-                panel.TextLines.Add(Color("C'est votre annonce.", Colors.Info));
                 panel.NextButton("Gérer", () => ManageListing(player, listing));
             }
             else
@@ -965,6 +981,8 @@ namespace OccazByLorisStrange
                 panel.NextButton("Acheter", () => ConfirmBuy(player, listing, null));
                 if (Config.AllowOffers) panel.NextButton("Faire une offre", () => Offer(player, listing));
             }
+            if (!string.IsNullOrWhiteSpace(listing.Description))
+                panel.NextButton("Description", () => Description(player, listing));
             panel.AddButton("Localiser", _ => Locate(player, listing));
             panel.PreviousButton();
             panel.CloseButton();
@@ -988,9 +1006,11 @@ namespace OccazByLorisStrange
             double price = offer?.Amount ?? listing.Price;
 
             Panel panel = Context.PanelHelper.Create("Occaz - Confirmer l'achat", UIPanel.PanelType.Text, player, () => ConfirmBuy(player, listing, offer));
-            panel.TextLines.Add($"Acheter le {Bold(listing.Model)} ({listing.Plate}) pour {Color(Bold(M(price)), Colors.Success)} ?");
-            panel.TextLines.Add($"Espèces : {M(player.Money)} - Banque : {M(player.Bank)}");
-            panel.TextLines.Add(Color("La vente est définitive : le véhicule vous appartiendra immédiatement.", Colors.Warning));
+            panel.TextLines.Add($"{Bold(listing.Model)} - {listing.Plate}");
+            panel.TextLines.Add($"Prix : {Color(Bold(M(price)), Colors.Success)}");
+            panel.TextLines.Add($"Espèces : {M(player.Money)}");
+            panel.TextLines.Add($"Banque : {M(player.Bank)}");
+            panel.TextLines.Add(Color("Achat définitif.", Colors.Warning));
 
             panel.CloseButtonWithAction("Payer en espèces", async () => await OccazService.Buy(player, listing.Id, false, offer));
             if (Config.AllowBankPayment)
@@ -1003,8 +1023,8 @@ namespace OccazByLorisStrange
         private static void Offer(Player player, OccazListing listing)
         {
             Panel panel = Context.PanelHelper.Create("Occaz - Faire une offre", UIPanel.PanelType.Input, player, () => Offer(player, listing));
-            panel.TextLines.Add($"Prix affiché : {M(listing.Price)}. Combien proposez-vous ?");
-            panel.TextLines.Add(Color("Si le vendeur accepte, vous pourrez acheter à ce prix au point Occaz → Mes offres.", Colors.Grey));
+            panel.TextLines.Add($"Prix affiché : {M(listing.Price)}");
+            panel.TextLines.Add("Votre offre :");
             panel.SetInputPlaceholder(M(Math.Round(listing.Price * 0.9)));
             panel.PreviousButtonWithAction("Envoyer", async () =>
                 TryParseMoney(panel.inputText, out double amount)
@@ -1100,7 +1120,7 @@ namespace OccazByLorisStrange
         private static void EditPrice(Player player, OccazListing listing)
         {
             Panel panel = Context.PanelHelper.Create("Occaz - Nouveau prix", UIPanel.PanelType.Input, player, () => EditPrice(player, listing));
-            panel.TextLines.Add($"Prix actuel : {M(listing.Price)}. Une baisse de prix est annoncée sur Discord.");
+            panel.TextLines.Add($"Prix actuel : {M(listing.Price)}");
             panel.SetInputPlaceholder(M(listing.Price));
             panel.PreviousButtonWithAction("Valider", async () =>
                 TryParseMoney(panel.inputText, out double price)
@@ -1144,8 +1164,8 @@ namespace OccazByLorisStrange
         private static void ConfirmCancel(Player player, OccazListing listing)
         {
             Panel panel = Context.PanelHelper.Create("Occaz - Retirer l'annonce", UIPanel.PanelType.Text, player, () => ConfirmCancel(player, listing));
-            panel.TextLines.Add($"Retirer votre {listing.Model} de la vente ?");
-            panel.TextLines.Add(Color("Les frais d'annonce ne sont pas remboursés. Le véhicule est déverrouillé sur le parking.", Colors.Warning));
+            panel.TextLines.Add($"Retirer {Bold(listing.Model)} de la vente ?");
+            panel.TextLines.Add(Color("Frais d'annonce non remboursés.", Colors.Warning));
             panel.CloseButtonWithAction(Color("Retirer", Colors.Error), async () =>
             {
                 bool ok = await OccazService.Cancel(player, listing, ListingStatus.Cancelled, "retirée par le vendeur");
@@ -1256,8 +1276,8 @@ namespace OccazByLorisStrange
         private static void AdminAddParking(Player player)
         {
             Panel panel = Context.PanelHelper.Create("Occaz - Nouvelle place", UIPanel.PanelType.Input, player, () => AdminAddParking(player));
-            panel.TextLines.Add("Placez-vous au centre de la place, regardez dans le sens où la voiture doit être garée.");
-            panel.TextLines.Add("Nom de la place :");
+            panel.TextLines.Add("Au centre de la place, face au sens");
+            panel.TextLines.Add("de garage. Nom de la place :");
             panel.SetInputPlaceholder("Place A1");
             panel.PreviousButtonWithAction("Créer", async () =>
             {
@@ -1332,7 +1352,7 @@ namespace OccazByLorisStrange
             if (sold.Count == 0)
                 panel.AddTabLine("Aucune vente pour le moment", "", OccazService.Icon(0), _ => { });
             foreach (OccazListing l in sold)
-                panel.AddTabLine($"{OccazService.Date(l.ClosedAt)} {l.Model} ({l.Plate}) : {l.SellerName} → {l.BuyerName}", M(l.SoldPrice),
+                panel.AddTabLine($"{OccazService.Date(l.ClosedAt)} {l.Model} ({l.Plate}) : {l.SellerName} > {l.BuyerName}", M(l.SoldPrice),
                     OccazService.Icon(l.ModelId), _ => { });
             panel.PreviousButton();
             panel.CloseButton();
@@ -1420,7 +1440,7 @@ namespace OccazByLorisStrange
         public void SetPatternData(Player player)
         {
             Panel panel = Context.PanelHelper.Create("Occaz - Nouveau modèle de point", UIPanel.PanelType.Input, player, () => SetPatternData(player));
-            panel.TextLines.Add("Nom du point (titre du menu, ex. « Occaz By Loris Strange »)");
+            panel.TextLines.Add("Nom du point (titre du menu)");
             panel.SetInputPlaceholder("Occaz By Loris Strange");
             panel.PreviousButtonWithAction("Créer", async () =>
             {
