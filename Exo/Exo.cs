@@ -45,6 +45,8 @@ namespace Exo
         /// <summary>Jerricans remplis à la pompe par le jeu : plein -> vide.</summary>
         private static readonly Dictionary<int, int> Jerrycans = new Dictionary<int, int> { { 1564, 1183 }, { 1591, 1590 } };
         private const int JerrycanLiters = 15;
+        /// <summary>Icône des lignes de menu : le bidon d'essence (jerrican plein) du jeu.</summary>
+        private static int FuelIcon => ItemUtils.GetIconIdByItemId(1564);
 
         public ExoConfig Config { get; private set; }
         public List<ExoPump> Pumps { get; } = new List<ExoPump>();
@@ -703,7 +705,7 @@ namespace Exo
             foreach (ExoPump pump in pumps)
             {
                 string state = AutomatePumpState(pump, out bool usable);
-                panel.AddTabLine($"{pump.PumpName} - {Money(PriceOf(pump))}/L", state, IconUtils.Others.None.Id, _ =>
+                panel.AddTabLine($"{pump.PumpName} - {Money(PriceOf(pump))}/L", state, FuelIcon, _ =>
                 {
                     if (!usable)
                     {
@@ -737,7 +739,7 @@ namespace Exo
                 int liters = price > 0 ? (int)Math.Floor(amount / price) : 0;
                 if (liters <= 0) continue;
                 bool enough = !Config.StockActif || liters <= pump.Stock;
-                panel.AddTabLine($"{amount:0.##} € d'essence", enough ? $"{liters} L" : Color("stock insuffisant", Colors.Grey), IconUtils.Others.None.Id, _ =>
+                panel.AddTabLine($"{amount:0.##} € d'essence", enough ? $"{liters} L" : Color("stock insuffisant", Colors.Grey), FuelIcon, _ =>
                 {
                     if (!enough)
                     {
@@ -1145,7 +1147,7 @@ namespace Exo
             {
                 string state = pump.Ouverte ? Color("Ouverte", Colors.Success) : Color("Fermée", Colors.Error);
                 string stock = Config.StockActif ? $" - {pump.Stock}/{Config.CapaciteCiterne} L" : "";
-                panel.AddTabLine($"{pump.Label}{stock}", $"{state} {Money(PriceOf(pump))}", IconUtils.Others.None.Id, _ => EmployeePump(player, pump));
+                panel.AddTabLine($"{pump.Label}{stock}", $"{state} {Money(PriceOf(pump))}", FuelIcon, _ => EmployeePump(player, pump));
             }
             panel.SelectTabButton();
             panel.PreviousButton();
@@ -1238,7 +1240,7 @@ namespace Exo
             if (bills.Count == 0)
                 panel.AddTabLine("Aucun plein en attente", _ => { });
             foreach (PendingBill bill in bills.ToList())
-                panel.AddTabLine($"{bill.Pump.Label} - {bill.Liters} L", Money(bill.Total), IconUtils.Others.None.Id, _ => BillMenu(player, bill));
+                panel.AddTabLine($"{bill.Pump.Label} - {bill.Liters} L", Money(bill.Total), FuelIcon, _ => BillMenu(player, bill));
             panel.SelectTabButton();
             panel.PreviousButton();
             panel.CloseButton();
@@ -1365,7 +1367,7 @@ namespace Exo
             foreach (ExoSale sale in sales)
             {
                 string date = Nova.UnixTimeToDateTime(sale.Date).ToString("dd/MM HH:mm");
-                panel.AddTabLine($"{date} - {sale.ClientName} - {sale.Litres} L ({sale.EmployeeName})", Money(sale.Montant), IconUtils.Others.None.Id, _ => { });
+                panel.AddTabLine($"{date} - {sale.ClientName} - {sale.Litres} L ({sale.EmployeeName})", Money(sale.Montant), FuelIcon, _ => { });
             }
             panel.PreviousButton();
             panel.CloseButton();
@@ -1506,7 +1508,7 @@ namespace Exo
             foreach (ExoPump pump in pumps)
             {
                 string owner = pump.BizId == 0 ? "Toutes" : BizName(pump.BizId);
-                panel.AddTabLine($"{pump.Label} ({owner})", Money(PriceOf(pump)), IconUtils.Others.None.Id, _ => AdminPump(player, pump));
+                panel.AddTabLine($"{pump.Label} ({owner})", Money(PriceOf(pump)), FuelIcon, _ => AdminPump(player, pump));
             }
             panel.SelectTabButton();
             panel.PreviousButton();
