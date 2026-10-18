@@ -50,7 +50,7 @@ namespace OccazByLorisStrange
 
         public OccazPlugin(IGameAPI api) : base(api)
         {
-            PluginInformations = new PluginInformations(AssemblyHelper.GetName(), "2.0.0", "Loris Strange");
+            PluginInformations = new PluginInformations(AssemblyHelper.GetName(), "2.0.1", "Loris Strange");
             Instance = this;
         }
 
@@ -85,6 +85,7 @@ namespace OccazByLorisStrange
 
             Nova.server.OnMinutePassedEvent += OnMinutePassed;
 
+            await OccazService.RemoveDuplicateSellerPoints();
             await OccazService.LoadCache();
 
             Logger.LogSuccess($"{PluginInformations.SourceName} v{PluginInformations.Version}", $"initialisé - {Credit}");
@@ -393,6 +394,9 @@ namespace OccazByLorisStrange
     {
         private static readonly Dictionary<int, List<NCheckpoint>> Points = new Dictionary<int, List<NCheckpoint>>();
 
+        /// <summary>Numéro de la dernière demande d'affichage par joueur (netId).</summary>
+        private static readonly Dictionary<uint, int> Requests = new Dictionary<uint, int>();
+
         private static OccazConfig Config => OccazPlugin.Instance.Config;
 
         private static IEnumerable<Player> OnlinePlayers() =>
@@ -427,6 +431,15 @@ namespace OccazByLorisStrange
         {
             try
             {
+                // Plusieurs appels peuvent se croiser (connexion + rechargement) : seul le dernier s'applique,
+                // sinon le joueur se retrouve avec deux points superposés qui ouvrent deux menus
+                int token = Requests.TryGetValue(player.netId, out int last) ? last + 1 : 1;
+                Requests[player.netId] = token;
+
+                Dictionary<int, OccazParking> parkings = (await OccazParking.QueryAll()).ToDictionary(p => p.Id);
+                List<OccazListing> listings = await OccazService.ActiveListings();
+                if (Requests[player.netId] != token) return;
+
                 foreach (List<NCheckpoint> list in Points.Values)
                 {
                     foreach (NCheckpoint checkpoint in list.Where(c => c.playerId == player.netId).ToList())
@@ -437,8 +450,7 @@ namespace OccazByLorisStrange
                 }
                 if (!Config.InfoPointEnabled) return;
 
-                Dictionary<int, OccazParking> parkings = (await OccazParking.QueryAll()).ToDictionary(p => p.Id);
-                foreach (OccazListing listing in await OccazService.ActiveListings())
+                foreach (OccazListing listing in listings)
                     if (parkings.TryGetValue(listing.ParkingId, out OccazParking parking))
                         Create(player, listing.Id, parking.InfoPosition);
             }
@@ -510,6 +522,33 @@ namespace OccazByLorisStrange
                 ListedVehicles.Add(listing.VehicleDbId);
             RelockAll();
             OccazInfoPoints.RefreshAll();
+        }
+
+        /// <summary>Supprime les points vendeur posés en double au même endroit (moins d'1 m).</summary>
+        public static async Task RemoveDuplicateSellerPoints()
+        {
+            try
+            {
+                List<NPoint> kept = new List<NPoint>();
+                int removed = 0;
+                foreach (NPoint point in (await ModEntity<NPoint>.Query(p => p.TypeName == nameof(OccazPattern))).OrderBy(p => p.Id))
+                {
+                    if (kept.Any(k => Vector3.Distance(k.VPosition, point.VPosition) < 1f))
+                    {
+                        if (await point.Delete()) removed++;
+                    }
+                    else
+                    {
+                        kept.Add(point);
+                    }
+                }
+                if (removed > 0)
+                    Logger.LogWarning(OccazPlugin.Instance.PluginInformations.SourceName, $"{removed} point(s) vendeur en double supprimé(s).");
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(OccazPlugin.Instance.PluginInformations.SourceName, $"Nettoyage des points : {ex.Message}");
+            }
         }
 
         public static Task<List<OccazListing>> ActiveListings() =>
@@ -956,6 +995,20 @@ namespace OccazByLorisStrange
 
         private static string Todo => Color("à remplir", Colors.Error);
 
+        private static readonly Dictionary<uint, DateTime> LastPointTrigger = new Dictionary<uint, DateTime>();
+
+        /// <summary>
+        /// Deux points bleus superposés se déclenchent en même temps : le second menu ferme le premier.
+        /// On ignore donc un nouveau déclenchement du même joueur pendant 2 secondes.
+        /// </summary>
+        public static bool IsDoubleTrigger(Player player)
+        {
+            DateTime now = DateTime.UtcNow;
+            if (LastPointTrigger.TryGetValue(player.netId, out DateTime last) && (now - last).TotalSeconds < 2) return true;
+            LastPointTrigger[player.netId] = now;
+            return false;
+        }
+
         /// <summary>Affiche le panneau avec la signature « Created by Loris Strange » en bas.</summary>
         public static void Show(Panel panel)
         {
@@ -1129,7 +1182,7 @@ namespace OccazByLorisStrange
         /// <summary>Le joueur marche sur le point bleu devant une voiture en vente.</summary>
         public static async void OpenFromPoint(Player player, int listingId)
         {
-            if (player?.character == null) return;
+            if (player?.character == null || IsDoubleTrigger(player)) return;
             OccazListing listing = await OccazListing.Query(listingId);
             if (listing == null || listing.Status != ListingStatus.Active)
             {
@@ -1539,6 +1592,12 @@ namespace OccazByLorisStrange
         /// <summary>Place un point vendeur à la position du staff (crée le modèle de point si besoin).</summary>
         private static async Task PlaceSellerPoint(Player player)
         {
+            Vector3 here = player.setup.transform.position;
+            if ((await SellerPoints()).Any(p => Vector3.Distance(p.VPosition, here) < 3f))
+            {
+                OccazService.Fail(player, "Il y a déjà un point vendeur ici (moins de 3 m).");
+                return;
+            }
             OccazPattern pattern = (await OccazPattern.QueryAll()).FirstOrDefault();
             if (pattern == null)
             {
@@ -1960,6 +2019,7 @@ namespace OccazByLorisStrange
 
         public void OnPlayerTrigger(Player player)
         {
+            if (OccazMenus.IsDoubleTrigger(player)) return;
             OccazMenus.Main(player, PatternName);
         }
 
