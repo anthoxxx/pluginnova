@@ -35,6 +35,9 @@ serveur tourne, il est rechargé automatiquement en moins d'une minute.
    **état**, description). Les frais et ce que vous toucherez sont affichés. **Publier**.
 3. Le véhicule est déplacé sur une place libre, **verrouillé** (personne ne peut monter dedans), et un
    **point bleu apparaît devant lui**. Tous les joueurs connectés sont prévenus.
+   **Pendant la vente, le véhicule est bloqué** : impossible de monter dedans, de le ranger au garage,
+   de le remorquer ou de le pousser (il est remis sur sa place en 5 secondes). Pour le récupérer, le
+   vendeur doit **annuler la vente**.
 4. **Mes annonces** (ou votre propre point bleu devant la voiture) : changer le prix, offres reçues,
    **prolonger**, localiser, retirer de la vente.
 5. L'argent (moins la commission) arrive **en banque**, même si vous êtes déconnecté.

@@ -50,7 +50,7 @@ namespace OccazByLorisStrange
 
         public OccazPlugin(IGameAPI api) : base(api)
         {
-            PluginInformations = new PluginInformations(AssemblyHelper.GetName(), "2.0.1", "Loris Strange");
+            PluginInformations = new PluginInformations(AssemblyHelper.GetName(), "2.1.0", "Loris Strange");
             Instance = this;
         }
 
@@ -84,6 +84,7 @@ namespace OccazByLorisStrange
             }
 
             Nova.server.OnMinutePassedEvent += OnMinutePassed;
+            GuardLoop();
 
             await OccazService.RemoveDuplicateSellerPoints();
             await OccazService.LoadCache();
@@ -156,8 +157,21 @@ namespace OccazByLorisStrange
             // Véhicule en vente : personne ne monte dedans, pas même le vendeur
             vehicle.EjectAll();
             vehicle.NetworkisLocked = true;
-            player.Notify(Title, "Ce véhicule est en vente. Marchez sur le point bleu devant lui pour voir l'annonce.",
+            player.Notify(Title, OccazService.IsSellerOf(vehicle.VehicleDbId, player)
+                    ? "Votre véhicule est en vente : annulez la vente (point Occaz > Mes annonces) pour le récupérer."
+                    : "Ce véhicule est en vente. Marchez sur le point bleu devant lui pour voir l'annonce.",
                 NotificationManager.Type.Warning, 6f);
+        }
+
+        /// <summary>Toutes les 5 s : les voitures en vente sont remises en place si on les a bougées ou rangées.</summary>
+        private static async void GuardLoop()
+        {
+            while (true)
+            {
+                await Task.Delay(5000);
+                try { await OccazService.GuardVehicles(); }
+                catch (Exception ex) { Logger.LogError("Occaz surveillance", ex.Message); }
+            }
         }
 
         private void OnMinutePassed()
@@ -346,6 +360,13 @@ namespace OccazByLorisStrange
         public double SoldPrice { get; set; }
         public double Commission { get; set; }
         public long ClosedAt { get; set; }
+        /// <summary>Position où la voiture doit rester pendant la vente (elle y est ramenée si on la bouge).</summary>
+        public float SpotX { get; set; }
+        public float SpotY { get; set; }
+        public float SpotZ { get; set; }
+        public float SpotRotY { get; set; }
+
+        [Ignore] public bool HasSpot => SpotX != 0 || SpotY != 0 || SpotZ != 0;
 
         [Ignore] public string RealModelName => OccazService.ModelName(ModelId);
     }
@@ -487,6 +508,74 @@ namespace OccazByLorisStrange
         /// <summary>Ids (base de données) des véhicules actuellement en vente.</summary>
         private static readonly HashSet<int> ListedVehicles = new HashSet<int>();
 
+        private class GuardSpot
+        {
+            public Vector3 Position;
+            public float RotY;
+            public int SellerId;
+        }
+
+        /// <summary>Position à respecter pour chaque véhicule en vente.</summary>
+        private static readonly Dictionary<int, GuardSpot> GuardSpots = new Dictionary<int, GuardSpot>();
+
+        /// <summary>Véhicules en train d'être remis en place.</summary>
+        private static readonly HashSet<int> Moving = new HashSet<int>();
+
+        private static void Guard(OccazListing listing, OccazParking parking)
+        {
+            GuardSpots[listing.VehicleDbId] = new GuardSpot
+            {
+                Position = listing.HasSpot ? new Vector3(listing.SpotX, listing.SpotY, listing.SpotZ) : parking?.Position ?? Vector3.zero,
+                RotY = listing.HasSpot ? listing.SpotRotY : parking?.RotY ?? 0f,
+                SellerId = listing.SellerCharacterId
+            };
+        }
+
+        public static bool IsSellerOf(int vehicleDbId, Player player) =>
+            player?.character != null && GuardSpots.TryGetValue(vehicleDbId, out GuardSpot spot) && spot.SellerId == player.character.Id;
+
+        /// <summary>
+        /// Une voiture en vente ne bouge pas : rangée (garage, fourrière, téléphone...) elle est ressortie sur
+        /// sa place, déplacée (poussée, remorquée...) de plus de 2,5 m elle y est ramenée. Seule l'annulation la libère.
+        /// </summary>
+        public static async Task GuardVehicles()
+        {
+            foreach (KeyValuePair<int, GuardSpot> entry in GuardSpots.ToList())
+            {
+                int id = entry.Key;
+                GuardSpot spot = entry.Value;
+                if (spot.Position == Vector3.zero || Moving.Contains(id) || !IsListed(id)) continue;
+
+                LifeVehicle vehicle = Nova.v.GetVehicle(id);
+                if (vehicle == null) continue;
+
+                bool stowed = vehicle.isStowed && vehicle.instance == null;
+                bool moved = !stowed && vehicle.instance != null && Vector3.Distance(vehicle.instance.transform.position, spot.Position) > 2.5f;
+                if (!stowed && !moved)
+                {
+                    if (vehicle.instance != null && !vehicle.instance.isLocked) vehicle.instance.NetworkisLocked = true;
+                    continue;
+                }
+
+                Moving.Add(id);
+                try
+                {
+                    bool ok = stowed
+                        ? await Spawn(vehicle, spot.Position, spot.RotY)
+                        : await MoveTo(vehicle, spot.Position, spot.RotY);
+                    if (vehicle.instance != null) vehicle.instance.NetworkisLocked = IsListed(id);
+                    if (ok)
+                        FindOnline(spot.SellerId)?.Notify(Title,
+                            "Votre véhicule est en vente : il ne peut pas être déplacé ni rangé. Annulez la vente pour le récupérer.",
+                            NotificationManager.Type.Warning, 8f);
+                }
+                finally
+                {
+                    Moving.Remove(id);
+                }
+            }
+        }
+
         /// <summary>Annonces en cours de traitement (achat, retrait) pour éviter les doubles ventes.</summary>
         private static readonly HashSet<int> Busy = new HashSet<int>();
 
@@ -518,8 +607,13 @@ namespace OccazByLorisStrange
         public static async Task LoadCache()
         {
             ListedVehicles.Clear();
+            GuardSpots.Clear();
+            Dictionary<int, OccazParking> parkings = (await OccazParking.QueryAll()).ToDictionary(p => p.Id);
             foreach (OccazListing listing in await ActiveListings())
+            {
                 ListedVehicles.Add(listing.VehicleDbId);
+                Guard(listing, parkings.TryGetValue(listing.ParkingId, out OccazParking parking) ? parking : null);
+            }
             RelockAll();
             OccazInfoPoints.RefreshAll();
         }
@@ -601,8 +695,11 @@ namespace OccazByLorisStrange
                 .FirstOrDefault();
         }
 
-        /// <summary>Range la voiture puis la fait réapparaître sur la place de parking.</summary>
-        private static async Task<bool> MoveToParking(LifeVehicle vehicle, OccazParking parking)
+        private static Task<bool> MoveToParking(LifeVehicle vehicle, OccazParking parking) =>
+            MoveTo(vehicle, parking.Position, parking.RotY);
+
+        /// <summary>Range la voiture puis la fait réapparaître à la position voulue.</summary>
+        private static async Task<bool> MoveTo(LifeVehicle vehicle, Vector3 position, float rotY)
         {
             vehicle.instance?.EjectAll();
             Nova.v.StowVehicle(vehicle.vehicleId);
@@ -612,7 +709,13 @@ namespace OccazByLorisStrange
                 await Task.Delay(250);
             if (vehicle.instance != null) return false;
 
-            bool ok = Nova.v.UnstowVehicle(vehicle.vehicleId, parking.Position + Vector3.up * 0.5f, Quaternion.Euler(0f, parking.RotY, 0f));
+            return await Spawn(vehicle, position, rotY);
+        }
+
+        /// <summary>Sort du garage une voiture rangée, à la position voulue.</summary>
+        private static async Task<bool> Spawn(LifeVehicle vehicle, Vector3 position, float rotY)
+        {
+            bool ok = Nova.v.UnstowVehicle(vehicle.vehicleId, position + Vector3.up * 0.5f, Quaternion.Euler(0f, rotY, 0f));
             for (int i = 0; i < 20 && ok && vehicle.instance == null; i++)
                 await Task.Delay(250);
             return ok;
@@ -662,6 +765,11 @@ namespace OccazByLorisStrange
                 draft.SellerCharacterId = player.character.Id;
                 draft.SellerName = player.FullName;
                 draft.ParkingId = parking.Id;
+                Vector3 spot = vehicle.instance != null ? vehicle.instance.transform.position : parking.Position;
+                draft.SpotX = spot.x;
+                draft.SpotY = spot.y;
+                draft.SpotZ = spot.z;
+                draft.SpotRotY = vehicle.instance != null ? vehicle.instance.transform.eulerAngles.y : parking.RotY;
                 draft.Status = ListingStatus.Active;
                 draft.CreatedAt = Now;
                 draft.ExpiresAt = Now + Config.ListingDurationHours * 3600L;
@@ -672,6 +780,7 @@ namespace OccazByLorisStrange
                 }
 
                 ListedVehicles.Add(vehicle.vehicleId);
+                Guard(draft, parking);
                 if (vehicle.instance != null) vehicle.instance.NetworkisLocked = true;
                 OccazInfoPoints.ShowListing(draft, parking);
 
@@ -827,6 +936,7 @@ namespace OccazByLorisStrange
             listing.ClosedAt = Now;
             await listing.Save();
             ListedVehicles.Remove(listing.VehicleDbId);
+            GuardSpots.Remove(listing.VehicleDbId);
             OccazInfoPoints.Hide(listing.Id);
 
             Vehicle instance = Nova.v.GetVehicle(listing.VehicleDbId)?.instance;
