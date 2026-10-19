@@ -1,0 +1,16 @@
+{
+  "name": "easylife-tablette",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tablette Easy Life (Nova-Life: Amboise) : site web + API pour le plugin du serveur",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning src/server.js"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "dependencies": {
+    "express": "4.21.2"
+  }
+}

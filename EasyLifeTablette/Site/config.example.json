@@ -1,0 +1,10 @@
+{
+  "serverName": "Easy Life",
+  "baseUrl": "https://tablette.mon-serveur.fr",
+  "port": 3000,
+  "gameApiKey": "REMPLACEZ-PAR-UNE-LONGUE-CLE-SECRETE",
+  "steamApiKey": "",
+  "adminSteamIds": ["76561198000000000"],
+  "mailDomain": "easylife.fr",
+  "database": "data/easylife.sqlite"
+}
