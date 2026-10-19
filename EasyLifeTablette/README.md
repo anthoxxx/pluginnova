@@ -1,5 +1,34 @@
 # Tablette Easy Life
 
+## Tablette en jeu (plugin seul, aucun site nécessaire)
+
+Mettez `EasyLifeTablette.dll` dans le dossier `Plugins` du serveur et redémarrez. En jeu : **`/tablette`** (ou `/tab`).
+Pour l'ouvrir aussi avec une touche : `Plugins/EasyLifeTablette/config.json` → `"Key": "F3"` (par exemple).
+
+| Application | Ce qu'elle fait |
+|---|---|
+| **Accueil** | Date et heure, solde bancaire, mails non lus, dernière actualité, notifications. |
+| **Mail** | Une adresse par joueur (`prenom.nom@easylife.fr`), boîte de réception, envoyés, écrire (recherche par nom, adresse ou numéro), répondre, supprimer. |
+| **Annuaire** | Toutes les entreprises du serveur (contact, recrutement, description) + fiches ajoutées par le staff. « Écrire au gérant ». |
+| **Actualités** | Articles du staff et des journalistes, rubriques, « À la une ». |
+| **Le Bon Plan** | Petites annonces : 10 catégories, prix ou « Prix sur demande », favoris, mes annonces, contact du vendeur par mail, clôture, expiration après 30 jours. |
+| **Commander** | Les entreprises qui ont une carte deviennent des restaurants. Un employé clique sur **Prendre le service** (sinon le restaurant est fermé). Le client paie avec son compte bancaire ; à « Terminée », l'argent part sur le compte de l'entreprise ; à « Annulée », le client est remboursé. Le patron gère la carte depuis **Espace équipe**. |
+| **Banque** | Solde et liquide, **virements** vers les joueurs en ville, historique. |
+| **Notes**, **Notifications**, **Réglages** (code de verrouillage, notifications à l'écran) et **Administration** (journalistes, fiches d'annuaire) pour le staff. |
+
+Les données sont dans `Plugins/EasyLifeTablette/data.json`. Options de `config.json` : `ServerName`, `MailDomain`,
+`Key`, `MaxTransfer` (plafond par virement), `DeliveryFee` (frais de livraison), `MaxAdsPerPlayer`.
+
+Compilation : mettre les 5 DLL de `Plugin/libs/README.md` dans `Plugin/libs/`, ouvrir `Plugin/EasyLifeTablette.csproj`,
+générer en Release.
+
+## Site web (pour plus tard)
+
+Le dossier `Site/` contient une version web de la tablette (connexion Steam, accessible hors du jeu). Il n'est pas
+encore relié au plugin en jeu.
+
+### Détails du site
+
 Une tablette façon iPad pour le serveur **Easy Life** (Nova-Life: Amboise), utilisable :
 - **en jeu**, sur l'ordinateur (F2), avec un code donné par la commande `/tablette` ;
 - **hors du jeu**, dans n'importe quel navigateur (PC, téléphone), avec **« Se connecter avec Steam »**.
@@ -71,23 +100,6 @@ tablette.easylife.fr {
 
 La base de données est le fichier `Site/data/easylife.sqlite` : sauvegardez-le régulièrement.
 
-## 2. Installer le plugin
-
-1. Copier les 5 DLL listées dans `Plugin/libs/README.md` dans `Plugin/libs/` (ModKit et AAMenu ne sont **pas** nécessaires).
-2. Ouvrir `Plugin/EasyLifeTablette.csproj` dans Visual Studio et générer en **Release** (ou `dotnet build -c Release`).
-3. Copier `Plugin/bin/Release/net472/EasyLifeTablette.dll` dans le dossier `Plugins` du serveur.
-4. Démarrer le serveur une fois : le fichier `Plugins/EasyLifeTablette/config.json` est créé. Le remplir :
-
-| Clé | Valeur |
-|---|---|
-| `ApiUrl` | Adresse du site **vue depuis le serveur de jeu**. Même machine : `http://127.0.0.1:3000`. Sinon l'adresse publique. |
-| `ApiKey` | La même valeur que `gameApiKey` du site. |
-| `SyncSeconds` | Fréquence de synchronisation (30 s par défaut). |
-| `SyncBusinesses` | `true` pour remplir l'Annuaire avec les entreprises du serveur. |
-| `CodeKey` | Touche qui affiche aussi le code (ex. `"F2"`). `"None"` = seulement la commande `/tablette`. |
-
-5. Redémarrer le serveur.
-
 ## 3. Utilisation
 
 **Joueurs, en jeu** : taper `/tablette` (ou `/tab`) → un code s'affiche → ouvrir l'ordinateur (F2) → aller sur
@@ -108,8 +120,3 @@ l'adresse du site → saisir le code.
 - Le code de la tablette (Réglages → Code & sécurité) est demandé à chaque nouvelle connexion et au déverrouillage.
 - Les textes écrits par les joueurs sont toujours affichés comme du texte (pas de HTML), les photos d'annonces doivent être en `https://`.
 
-## Compatibilité
-
-Le plugin est compilé et vérifié avec les DLL du serveur (API 1.69) : il lit l'argent avec `player.Money` /
-`player.Bank` (portes-monnaie), le métier avec `player.biz`, et les entreprises de l'Annuaire avec
-`Nova.biz.bizs` (nom + contact).
