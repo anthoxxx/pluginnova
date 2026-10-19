@@ -108,11 +108,8 @@ l'adresse du site → saisir le code.
 - Le code de la tablette (Réglages → Code & sécurité) est demandé à chaque nouvelle connexion et au déverrouillage.
 - Les textes écrits par les joueurs sont toujours affichés comme du texte (pas de HTML), les photos d'annonces doivent être en `https://`.
 
-## À vérifier sur votre serveur
+## Compatibilité
 
-La documentation officielle de l'API Nova-Life n'était pas accessible pendant le développement. Le plugin
-n'utilise que des éléments de l'API déjà présents dans ce dépôt, plus quelques autres à confirmer :
-`player.steamId`, `player.character.Money` / `player.character.Bank`.
-Si la compilation signale l'un d'eux, il suffit de corriger le nom dans `Plugin/EasyLifeTablette.cs` (méthode `Sync`).
-Les entreprises sont lues par réflexion sur `Nova.biz` : si rien n'est trouvé, un avertissement apparaît dans les
-logs et l'Annuaire garde uniquement les fiches ajoutées par le staff.
+Le plugin est compilé et vérifié avec les DLL du serveur (API 1.69) : il lit l'argent avec `player.Money` /
+`player.Bank` (portes-monnaie), le métier avec `player.biz`, et les entreprises de l'Annuaire avec
+`Nova.biz.bizs` (nom + contact).

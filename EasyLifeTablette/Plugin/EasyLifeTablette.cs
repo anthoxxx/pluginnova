@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
@@ -122,8 +121,9 @@ namespace EasyLifeTablette
                 {
                     steamId = player.steamId.ToString(),
                     name = player.FullName,
-                    money = player.character.Money,
-                    bank = player.character.Bank,
+                    job = player.HasBiz ? player.biz?.BizName ?? "" : "",
+                    money = player.Money,
+                    bank = player.Bank,
                     isAdmin = player.IsAdmin,
                 });
             }
@@ -131,7 +131,7 @@ namespace EasyLifeTablette
             string body = JsonConvert.SerializeObject(new
             {
                 players = online,
-                businesses = config.SyncBusinesses ? GameBusinesses.Read() : null,
+                businesses = config.SyncBusinesses ? ReadBusinesses() : null,
             });
 
             syncRunning = true;
@@ -148,6 +148,16 @@ namespace EasyLifeTablette
             {
                 syncRunning = false;
             });
+        }
+
+        /// <summary>Entreprises du serveur, pour l'Annuaire de la tablette.</summary>
+        private static List<BusinessData> ReadBusinesses()
+        {
+            if (Nova.biz?.bizs == null) return null;
+            return Nova.biz.bizs
+                .Where(b => b != null && !string.IsNullOrWhiteSpace(b.BizName))
+                .Select(b => new BusinessData { id = b.Id, name = b.BizName, phone = b.Contact ?? "" })
+                .ToList();
         }
 
         /// <summary>
@@ -209,80 +219,6 @@ namespace EasyLifeTablette
         }
     }
 
-    /// <summary>
-    /// Lecture des entreprises du serveur pour l'Annuaire.
-    /// Faite par réflexion sur Nova.biz pour ne pas dépendre du nom exact des champs
-    /// (liste d'entreprises avec un identifiant et un nom) : si rien n'est trouvé,
-    /// l'Annuaire garde simplement les fiches ajoutées par le staff.
-    /// </summary>
-    internal static class GameBusinesses
-    {
-        private static bool warned;
-
-        public static List<BusinessData> Read()
-        {
-            List<BusinessData> result = new List<BusinessData>();
-            try
-            {
-                object manager = Nova.biz;
-                if (manager == null) return null;
-
-                foreach (object value in Members(manager))
-                {
-                    if (!(value is IEnumerable list) || value is string) continue;
-                    foreach (object biz in list)
-                    {
-                        if (biz == null) continue;
-                        object id = Get(biz, "Id", "id", "BizId");
-                        object name = Get(biz, "BizName", "Name", "name", "bizName");
-                        if (id == null || name == null) break; // pas une liste d'entreprises
-                        result.Add(new BusinessData
-                        {
-                            id = Convert.ToInt32(id),
-                            name = name.ToString(),
-                            phone = Get(biz, "Phone", "phone", "PhoneNumber")?.ToString() ?? "",
-                        });
-                    }
-                    if (result.Count > 0) return result;
-                }
-            }
-            catch (Exception e)
-            {
-                if (!warned) Debug.LogWarning($"[EasyLifeTablette] lecture des entreprises impossible : {e.Message}");
-                warned = true;
-                return null;
-            }
-
-            if (!warned) Debug.LogWarning("[EasyLifeTablette] aucune liste d'entreprises trouvée dans Nova.biz : l'Annuaire ne sera pas rempli automatiquement.");
-            warned = true;
-            return null;
-        }
-
-        private static IEnumerable<object> Members(object target)
-        {
-            const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public;
-            foreach (var field in target.GetType().GetFields(flags))
-                yield return field.GetValue(target);
-            foreach (var prop in target.GetType().GetProperties(flags))
-                if (prop.GetIndexParameters().Length == 0 && prop.CanRead)
-                    yield return prop.GetValue(target, null);
-        }
-
-        private static object Get(object target, params string[] names)
-        {
-            const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public;
-            Type type = target.GetType();
-            foreach (string name in names)
-            {
-                var field = type.GetField(name, flags);
-                if (field != null) return field.GetValue(target);
-                var prop = type.GetProperty(name, flags);
-                if (prop != null && prop.GetIndexParameters().Length == 0) return prop.GetValue(target, null);
-            }
-            return null;
-        }
-    }
-
     /// <summary>Plugins/EasyLifeTablette/config.json (créé au premier lancement).</summary>
     internal class Config
     {
@@ -329,6 +265,7 @@ namespace EasyLifeTablette
     {
         public string steamId;
         public string name;
+        public string job;
         public double money;
         public double bank;
         public bool isAdmin;
@@ -341,6 +278,8 @@ namespace EasyLifeTablette
         public string phone;
     }
 
+    // Remplis par Newtonsoft (désérialisation)
+#pragma warning disable 0649
     internal class CodeResponse
     {
         public string code;
@@ -358,4 +297,5 @@ namespace EasyLifeTablette
         public string title;
         public string body;
     }
+#pragma warning restore 0649
 }
