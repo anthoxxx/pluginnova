@@ -307,6 +307,7 @@ namespace UberEats
                 RestaurantName = restaurant.Name,
                 Lines = lines.Select(l => new OrderLine { MenuItemId = l.item.Id, ItemId = l.item.ItemId, Quantity = l.quantity, UnitPrice = l.item.Price }).ToList(),
                 Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim(),
+                ConfirmationCode = NewConfirmationCode(),
                 Subtotal = subtotal,
                 DeliveryFee = fee,
                 State = restaurant.AutoAccept ? OrderStatus.Ready : OrderStatus.Pending,
@@ -328,17 +329,14 @@ namespace UberEats
             }
 
             _carts.Remove(characterId);
-            player.Notify(AppName, $"Commande #{order.Id} payée ! Suivez-la dans « Mes commandes ».", NotificationManager.Type.Success, 6f);
+            Alert(player, $"Commande #{order.Id} payée ! Code de confirmation : {Bold(order.ConfirmationCode)} (à donner au livreur).", NotificationManager.Type.Success, 12f);
 
-            if (restaurant.AutoAccept)
-            {
-                NotifyRestaurant(restaurant, $"Commande #{order.Id} reçue et validée automatiquement.", NotificationManager.Type.Info, 6f);
-                AlertCouriers(order, restaurant);
-            }
-            else
-            {
-                NotifyRestaurant(restaurant, $"Nouvelle commande #{order.Id} de {order.ClientName} ! Acceptez-la dans l'Espace restaurateur.", NotificationManager.Type.Warning, 10f);
-            }
+            string content = string.Join(", ", order.Lines.Select(l => $"{l.Quantity}x {ItemName(player, l.ItemId)}"));
+            NotifyRestaurant(restaurant, restaurant.AutoAccept
+                ? $"Nouvelle commande #{order.Id} de {order.ClientName} ({content}), validée automatiquement."
+                : $"Nouvelle commande #{order.Id} de {order.ClientName} ({content}) ! À accepter dans l'Espace restaurateur.",
+                NotificationManager.Type.Warning, 12f);
+            AlertCouriers(order, restaurant);
             return true;
         }
 
@@ -383,6 +381,8 @@ namespace UberEats
                 panel.AddInfo($"Livreur : {order.CourierName} ({order.CourierTransport})");
             else if (order.IsActive)
                 panel.AddInfo(Color("Recherche d'un livreur…", Colors.Grey));
+            if (order.IsActive && !string.IsNullOrEmpty(order.ConfirmationCode))
+                panel.AddInfo($"Code de confirmation : {Color(order.ConfirmationCode, Colors.Warning)}");
             if (order.IsActive)
                 panel.AddInfo($"Adresse de livraison : à {Mathf.RoundToInt(Vector3.Distance(PositionOf(player), order.Destination))} m");
             if (!string.IsNullOrEmpty(order.Note))
@@ -404,13 +404,15 @@ namespace UberEats
                     await fresh.Save();
                     player.Notify(AppName, "Adresse de livraison mise à jour à votre position.", NotificationManager.Type.Success, 5f);
 
-                    // Le GPS du livreur suit la nouvelle adresse
-                    Player courier = fresh.State == OrderStatus.Delivering ? FindPlayer(fresh.CourierCharacterId) : null;
-                    if (courier != null)
+                    // Le livreur est prévenu ; s'il a déjà le sac, son GPS suit la nouvelle adresse
+                    Player courier = FindPlayer(fresh.CourierCharacterId);
+                    if (courier != null && fresh.State == OrderStatus.Delivering)
                     {
                         SetGps(courier, fresh.Destination, async p => await OnArrivedAtClient(p, orderId));
-                        courier.Notify(AppName, "Le client a changé l'adresse de livraison, GPS mis à jour.", NotificationManager.Type.Info, 6f);
+                        Alert(courier, $"{fresh.ClientName} a changé l'adresse de livraison, GPS mis à jour.");
                     }
+                    else if (courier != null)
+                        Alert(courier, $"{fresh.ClientName} a changé l'adresse de livraison de la commande #{fresh.Id}.");
                     panel.Refresh();
                 });
             }
@@ -516,7 +518,9 @@ namespace UberEats
                 await courier.Save();
             }
             if (tip > 0) await Pay(courierId, tip, $"Pourboire de {order.ClientName}");
-            FindPlayer(courierId)?.Notify(AppName, $"{order.ClientName} vous a donné {courierStars}/5 pour la course #{order.Id}.", NotificationManager.Type.Info, 6f);
+            Alert(FindPlayer(courierId), $"{order.ClientName} vous a donné {courierStars}/5 pour la course #{order.Id}" + (tip > 0 ? $" et {FormatMoney(tip)} de pourboire." : "."));
+            if (restaurant != null)
+                NotifyRestaurant(restaurant, $"{order.ClientName} a noté la commande #{order.Id} : {restaurantStars}/5.", NotificationManager.Type.Info, 6f);
 
             player.Notify(AppName, "Merci pour votre avis !", NotificationManager.Type.Success, 4f);
             return true;

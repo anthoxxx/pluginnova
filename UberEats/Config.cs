@@ -29,6 +29,17 @@ namespace UberEats
         /// <summary>Une commande prête que personne ne récupère est annulée et remboursée après ce délai (minutes).</summary>
         public int NoCourierTimeoutMinutes { get; set; } = 45;
 
+        /// <summary>Courses aléatoires : paie de base, par 100 m entre les deux points, et plafond.</summary>
+        public double RandomMissionBasePay { get; set; } = 20;
+        public double RandomMissionPer100m { get; set; } = 3;
+        public double RandomMissionMaxPay { get; set; } = 120;
+        /// <summary>Distance minimale (m) entre le point de retrait et le point de dépôt (si possible).</summary>
+        public float RandomMissionMinDistance { get; set; } = 100f;
+        /// <summary>Pause (s) entre deux courses aléatoires d'un même livreur.</summary>
+        public int RandomMissionCooldownSeconds { get; set; } = 30;
+        /// <summary>Délai (s) entre deux recherches de livreur d'un restaurant pour une même commande.</summary>
+        public int CourierSearchCooldownSeconds { get; set; } = 60;
+
         /// <summary>L'Espace restaurateur est réservé aux employés d'une entreprise autorisée (le restaurant appartient à l'entreprise).</summary>
         public bool RestaurantRequiresJob { get; set; } = true;
         /// <summary>Activités d'entreprise donnant accès à l'Espace restaurateur (noms de Life.BizSystem.Activity.Type).</summary>

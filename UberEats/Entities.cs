@@ -104,6 +104,10 @@ namespace UberEats
         public string CourierTransport { get; set; }
 
         public string LinesJson { get; set; }
+        /// <summary>Code à 4 chiffres donné au client : le livreur doit le saisir pour livrer et être payé.</summary>
+        public string ConfirmationCode { get; set; }
+        /// <summary>Dernière recherche de livreur lancée par le restaurant (anti-spam).</summary>
+        public long LastCourierSearch { get; set; }
         public string Note { get; set; }
 
         public double Subtotal { get; set; }
@@ -160,9 +164,9 @@ namespace UberEats
         [Ignore]
         public bool IsCancellable => State == OrderStatus.Pending || State == OrderStatus.Preparing || State == OrderStatus.Ready;
 
-        /// <summary>Une course est visible des livreurs dès que le restaurant a accepté la commande.</summary>
+        /// <summary>Une course est visible des livreurs dès qu'elle est payée (le sac ne part que quand elle est prête).</summary>
         [Ignore]
-        public bool IsAvailableForCourier => CourierCharacterId == 0 && (State == OrderStatus.Preparing || State == OrderStatus.Ready);
+        public bool IsAvailableForCourier => CourierCharacterId == 0 && IsCancellable;
     }
 
     /// <summary>Profil d'un livreur indépendant : statistiques, note et niveau.</summary>
@@ -176,6 +180,8 @@ namespace UberEats
         public string Name { get; set; }
         public string Transport { get; set; } = "À pied";
         public int Deliveries { get; set; }
+        /// <summary>Courses aléatoires (colis entre deux points de livraison, sans restaurant).</summary>
+        public int RandomDeliveries { get; set; }
         public double Earnings { get; set; }
         public double Tips { get; set; }
         public int RatingSum { get; set; }
@@ -183,6 +189,30 @@ namespace UberEats
 
         [Ignore]
         public double Rating => RatingCount == 0 ? 0 : (double)RatingSum / RatingCount;
+    }
+
+    /// <summary>
+    /// Point de livraison aléatoire placé par le staff. Les courses aléatoires vont d'un point à un
+    /// autre (récupérer un colis, le déposer) : pas de restaurant, pas de client.
+    /// Invisible pour les autres joueurs : seul le livreur en mission voit son GPS.
+    /// </summary>
+    public class UEDeliveryPoint : ModEntity<UEDeliveryPoint>
+    {
+        [AutoIncrement]
+        [PrimaryKey]
+        public int Id { get; set; }
+
+        public string Name { get; set; }
+        public float PosX { get; set; }
+        public float PosY { get; set; }
+        public float PosZ { get; set; }
+
+        [Ignore]
+        public Vector3 Position
+        {
+            get => new Vector3(PosX, PosY, PosZ);
+            set { PosX = value.x; PosY = value.y; PosZ = value.z; }
+        }
     }
 
     /// <summary>

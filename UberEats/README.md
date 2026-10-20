@@ -25,8 +25,8 @@ Client commande et paie ──► Restaurant accepte / prépare ──► Livreu
         ▲                                                           │
         │                     GPS vers le restaurant, récupère le sac (restaurateur payé)
         │                                                           │
-        └──── remise en main propre (plats dans l'inventaire) ◄── GPS vers le client
-                         livreur payé, puis note + pourboire
+        └── le client donne son code ─► livreur saisit le code ◄── GPS vers le client
+              plats dans l'inventaire, livreur payé, puis note + pourboire
 ```
 
 ### Client
@@ -35,6 +35,8 @@ Client commande et paie ──► Restaurant accepte / prépare ──► Livreu
 - **Mon panier** : détail, frais de livraison (fixe + distance), retirer un article, vider.
   **Commander** : instructions facultatives pour le livreur, paiement par **carte bancaire**.
   L'adresse de livraison est la position du client au moment de la commande.
+  Le client reçoit un **code de confirmation à 4 chiffres** (notification, chat et « Mes commandes ») :
+  il le donne au livreur à la livraison.
 - **Mes commandes** : suivi en direct (en attente → en cuisine → prête → en livraison → livrée),
   nom et transport du livreur, **Livrer ici** (met à jour l'adresse et le GPS du livreur),
   **Annuler** (remboursement intégral tant que le sac n'est pas récupéré),
@@ -43,11 +45,17 @@ Client commande et paie ──► Restaurant accepte / prépare ──► Livreu
 ### Livreur indépendant
 - **Prendre mon service** en choisissant son transport (voiture ou à pied). Les livreurs en
   service reçoivent une notification à chaque nouvelle course.
-- **Courses disponibles** : restaurant, distances, rémunération, état (en cuisine / prête).
+- **Courses restaurant disponibles** : toutes les commandes payées sans livreur, même pas encore
+  validées par le restaurant (à valider / en cuisine / prête), avec restaurant, distance et gain.
+  Visible sans être en service ; accepter une course met en service.
 - **Accepter la course** → point GPS sur le restaurant. En arrivant, le sac est récupéré
   automatiquement si la commande est prête → point GPS sur l'adresse du client.
-- **Remise en main propre** : à côté du client, le sac est remis automatiquement (ou bouton
-  **Remettre le sac**). Les plats arrivent dans l'inventaire du client, le livreur est payé.
+- **Code de confirmation** : en arrivant chez le client, une fenêtre demande le code ; le livreur
+  le saisit (le client doit être à côté). Bon code → les plats arrivent dans l'inventaire du client
+  et le livreur est payé. Mauvais code → refusé, le client reçoit un rappel de son code.
+- **Courses aléatoires** : sans restaurant ni client. Le livreur récupère un colis sur un point de
+  livraison et le dépose sur un autre, tirés au hasard parmi les points placés par le staff ;
+  payé par la plateforme selon la distance (réglable).
 - **Ma course en cours** : relancer le GPS, récupérer/remettre le sac, prévenir le client, abandonner
   (avant récupération uniquement).
 - **Niveaux** avec bonus sur chaque course : Débutant, Confirmé (10 courses, +5 %), Expert (30, +10 %),
@@ -66,6 +74,9 @@ Client commande et paie ──► Restaurant accepte / prépare ──► Livreu
   (les items sont retirés de l'inventaire), reprendre du stock, masquer, retirer de la carte.
   Le stock est réservé dès la commande et rendu en cas d'annulation.
 - **Commandes à traiter** : accepter, accepter et marquer prête, marquer prête, refuser (client remboursé).
+- **Rechercher un livreur** (dans une commande sans livreur) : liste des livreurs libres en service
+  avec leur distance, pour leur proposer la course, et **appel à tous les joueurs en ville**
+  (limité à un appel par minute, réglable).
 - **Acceptation automatique** : les commandes sont prêtes dès le paiement, pratique quand le
   restaurateur n'est pas en cuisine.
 - Ouvrir / fermer, renommer, description, type de cuisine, déplacer le point de retrait,
@@ -79,23 +90,27 @@ Client commande et paie ──► Restaurant accepte / prépare ──► Livreu
 - Une commande que le restaurant n'accepte pas à temps, ou que personne ne vient chercher, est
   annulée et remboursée automatiquement.
 
-### Points de farm
-Le staff place des **points bleus de récolte** (ingrédients pour les restaurants, ou autre) :
-**AAMenu → Administration → Points bleus → Farm Uber Eats**, ou **Administration → Plugins →
-Uber Eats → Points de farm**.
-- **Nouveau modèle** : nom, puis réglages : **objet récolté** (depuis son inventaire ou par id),
-  **quantité min / max** (aléatoire), **durée de récolte**, **délai entre deux récoltes** par joueur,
-  **réservé au métier restaurateur** (oui / non).
-- **Placer ici** : un modèle peut être placé autant de fois que voulu. **Points** : se téléporter,
-  déplacer, supprimer. Supprimer un modèle supprime ses points.
-- Côté joueur : entrer dans le point → **Récolter** → rester sur place pendant la durée →
-  les objets arrivent dans l'inventaire.
+### Points de livraison aléatoires
+Le staff place les points dans **Administration → Plugins → Uber Eats → Points de livraison
+aléatoires** : **Placer un point ici** (avec un nom), puis pour chaque point : se téléporter,
+déplacer ici, supprimer. Il en faut au moins 2. Les points sont invisibles pour les joueurs :
+seul le livreur en course voit son GPS.
+
+### Notifications
+Chaque étape et chaque modification prévient les personnes concernées, à l'écran **et dans le chat** :
+- restaurant (tout le personnel en ville) : nouvelle commande avec son contenu, livreur trouvé ou
+  désisté, livreur qui attend, sac récupéré, commande livrée, annulation, note du client, et toute
+  modification faite par un collègue (ouverture, prix, stock, carte, réglages) ;
+- client : code de confirmation, commande acceptée / prête, livreur trouvé, sac récupéré,
+  livreur arrivé, livraison, annulation ou remboursement ;
+- livreurs : nouvelle course, course proposée par un restaurant, appel général, commande prête,
+  changement d'adresse, annulation, note et pourboire.
 
 ### Staff (AAMenu → Administration → Plugins → Uber Eats)
 - Réglages : commission, frais de livraison (base, par 100 m, max), commande minimum, prix
   d'inscription, commandes simultanées, distances de retrait/remise, délais d'annulation auto.
 - Métier restaurateur : activer / désactiver le verrou, activités et entreprises autorisées.
-- Points de farm (voir plus haut).
+- Points de livraison aléatoires et paie des courses aléatoires (voir plus haut).
 - Restaurants : suspendre / lever la suspension, supprimer.
 - Commandes en cours : annuler et rembourser (litiges), livreurs en service, classement.
 

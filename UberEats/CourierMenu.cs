@@ -27,7 +27,7 @@ namespace UberEats
             UECourier profile = await GetOrCreateCourier(player);
             UEOrder job = await GetCurrentJob(characterId);
             bool onDuty = _onDuty.Contains(characterId);
-            int available = onDuty ? (await GetAvailableJobs(characterId)).Count : 0;
+            int available = (await GetAvailableJobs(characterId)).Count;
 
             Panel panel = PanelHelper.Create("Espace livreur", UIPanel.PanelType.Tab, player, () => CourierMenu(player));
             if (onDuty)
@@ -46,7 +46,8 @@ namespace UberEats
 
             if (job != null)
                 panel.AddTabLine(Color($"Ma course en cours : #{job.Id} {job.RestaurantName}", Colors.Warning), _ => CurrentJob(player));
-            panel.AddTabLine($"Courses disponibles" + (onDuty ? Color($" ({available})", available > 0 ? Colors.Success : Colors.Grey) : ""), _ => AvailableJobs(player));
+            panel.AddTabLine("Courses restaurant disponibles" + Color($" ({available})", available > 0 ? Colors.Success : Colors.Grey), _ => AvailableJobs(player));
+            panel.AddTabLine("Courses aléatoires" + (_missions.ContainsKey(characterId) ? Color(" (en cours)", Colors.Warning) : ""), _ => RandomMissionMenu(player));
             panel.AddTabLine("Mon profil", _ => CourierProfile(player));
             panel.AddTabLine($"Moyen de transport : {profile.Transport}", _ => ChooseTransport(player, false));
 
@@ -106,30 +107,24 @@ namespace UberEats
         //  Courses disponibles
         // ------------------------------------------------------------------
 
+        /// <summary>Commandes payées sans livreur, y compris celles que le restaurant n'a pas encore acceptées.</summary>
         private static async Task<List<UEOrder>> GetAvailableJobs(int courierCharacterId)
         {
-            int preparing = (int)OrderStatus.Preparing, ready = (int)OrderStatus.Ready;
-            return (await UEOrder.Query(o => o.CourierCharacterId == 0 && (o.Status == preparing || o.Status == ready)))
+            int ready = (int)OrderStatus.Ready;
+            return (await UEOrder.Query(o => o.CourierCharacterId == 0 && o.Status <= ready))
                 .Where(o => o.ClientCharacterId != courierCharacterId).ToList();
         }
 
         private async void AvailableJobs(Player player)
         {
             int characterId = player.character.Id;
-            if (!_onDuty.Contains(characterId))
-            {
-                player.Notify(AppName, "Prenez votre service pour voir les courses.", NotificationManager.Type.Warning, 5f);
-                CourierMenu(player);
-                return;
-            }
-
             List<UEOrder> jobs = await GetAvailableJobs(characterId);
             Dictionary<int, UERestaurant> restaurants = (await UERestaurant.QueryAll()).ToDictionary(r => r.Id);
             Vector3 here = PositionOf(player);
 
             Panel panel = PanelHelper.Create("Courses disponibles", UIPanel.PanelType.Tab, player, () => AvailableJobs(player));
             if (jobs.Count == 0)
-                panel.AddTabLine(Color("Aucune course pour le moment, restez en service !", Colors.Grey), _ => { });
+                panel.AddTabLine(Color("Aucune commande à livrer pour le moment", Colors.Grey), _ => panel.Refresh());
 
             foreach (UEOrder job in jobs.Where(j => restaurants.ContainsKey(j.RestaurantId))
                          .OrderBy(j => Vector3.Distance(here, restaurants[j.RestaurantId].Position)))
@@ -137,8 +132,9 @@ namespace UberEats
                 UERestaurant restaurant = restaurants[job.RestaurantId];
                 int toRestaurant = Mathf.RoundToInt(Vector3.Distance(here, restaurant.Position));
                 int toClient = Mathf.RoundToInt(Vector3.Distance(restaurant.Position, job.Destination));
-                string state = job.State == OrderStatus.Ready ? Color("prête", Colors.Success) : Color("en cuisine", Colors.Orange);
-                panel.AddTabLine($"{restaurant.Name} ({toRestaurant} m) > client ({toClient} m) - {Color(FormatMoney(job.DeliveryFee), Colors.Success)} - {state}",
+                string state = job.State == OrderStatus.Ready ? Color("prête", Colors.Success)
+                    : job.State == OrderStatus.Preparing ? Color("en cuisine", Colors.Orange) : Color("à valider", Colors.Grey);
+                panel.AddTabLine($"{restaurant.Name} ({toRestaurant} m) - {Color(FormatMoney(job.DeliveryFee), Colors.Success)} - {state}",
                     _ => JobDetails(player, job.Id));
             }
 
@@ -176,6 +172,8 @@ namespace UberEats
                 panel.AddWrapped(order.Note);
             }
 
+            if (order.State == OrderStatus.Pending)
+                panel.AddInfo(Color("Le restaurant n'a pas encore validé la commande", Colors.Grey));
             panel.CloseButtonWithAction(Color("Accepter", Colors.Success), () => AcceptJob(player, orderId));
             panel.PreviousButton();
             panel.CloseButton();
@@ -185,8 +183,7 @@ namespace UberEats
         private async Task<bool> AcceptJob(Player player, int orderId)
         {
             int characterId = player.character.Id;
-            if (!_onDuty.Contains(characterId)) return false;
-            if (await GetCurrentJob(characterId) != null)
+            if (await GetCurrentJob(characterId) != null || _missions.ContainsKey(characterId))
             {
                 player.Notify(AppName, "Terminez d'abord votre course en cours.", NotificationManager.Type.Warning, 5f);
                 return false;
@@ -209,10 +206,11 @@ namespace UberEats
             order.UpdatedAt = Now();
             if (!await order.Save()) return false;
 
+            _onDuty.Add(characterId);
             SetGps(player, restaurant.Position, async p => await TryPickup(p, orderId));
-            player.Notify(AppName, $"Course acceptée ! Rendez-vous chez {restaurant.Name} (point sur votre carte).", NotificationManager.Type.Success, 6f);
-            FindPlayer(order.ClientCharacterId)?.Notify(AppName, $"{player.FullName} ({profile.Transport}) va livrer votre commande #{order.Id}.", NotificationManager.Type.Info, 6f);
-            NotifyRestaurant(restaurant, $"Le livreur {player.FullName} arrive pour la commande #{order.Id}.", NotificationManager.Type.Info, 6f);
+            Alert(player, $"Course #{order.Id} acceptée ! Rendez-vous chez {restaurant.Name} (point sur votre carte).", NotificationManager.Type.Success);
+            Alert(FindPlayer(order.ClientCharacterId), $"{player.FullName} ({profile.Transport}) va livrer votre commande #{order.Id}.");
+            NotifyRestaurant(restaurant, $"Le livreur {player.FullName} a pris la commande #{order.Id} et arrive.", NotificationManager.Type.Info, 6f);
             return true;
         }
 
@@ -274,10 +272,7 @@ namespace UberEats
                     ? $"Le client est à {Mathf.RoundToInt(Vector3.Distance(here, PositionOf(client)))} m"
                     : Color("Le client n'est pas en ville", Colors.Error));
 
-                panel.AddAction(Color("Remettre le sac", Colors.Success), async _ =>
-                {
-                    if (!await TryHandover(player, orderId)) panel.Refresh();
-                });
+                panel.AddAction(Color("Remettre le sac (code du client)", Colors.Success), _ => AskConfirmationCode(player, orderId));
                 panel.AddAction("GPS vers le client", _ =>
                 {
                     SetGps(player, order.Destination, async p => await OnArrivedAtClient(p, orderId));
@@ -286,7 +281,7 @@ namespace UberEats
                 });
                 panel.AddAction("Prévenir le client", _ =>
                 {
-                    FindPlayer(order.ClientCharacterId)?.Notify(AppName, $"Votre livreur {player.FullName} vous attend avec votre commande !", NotificationManager.Type.Warning, 10f);
+                    Alert(FindPlayer(order.ClientCharacterId), $"Votre livreur {player.FullName} vous attend ! Votre code : {Bold(order.ConfirmationCode)}", NotificationManager.Type.Warning, 10f);
                     player.Notify(AppName, "Le client a été prévenu.", NotificationManager.Type.Info, 4f);
                     panel.Refresh();
                 });
@@ -294,6 +289,20 @@ namespace UberEats
 
             panel.NextButton("Sélectionner", () => panel.SelectTab());
             panel.PreviousButton();
+            panel.CloseButton();
+            panel.Display();
+        }
+
+        /// <summary>Le livreur saisit le code donné par le client pour livrer et être payé.</summary>
+        private void AskConfirmationCode(Player player, int orderId)
+        {
+            Panel panel = PanelHelper.Create($"Livraison #{orderId} - code", UIPanel.PanelType.Input, player, () => AskConfirmationCode(player, orderId));
+            panel.TextLines.Add("Code de confirmation donné par le client");
+            panel.SetInputPlaceholder("4 chiffres");
+            panel.AddButton(Color("Valider", Colors.Success), async _ =>
+            {
+                if (await TryHandover(player, orderId, panel.inputText)) panel.Close();
+            });
             panel.CloseButton();
             panel.Display();
         }
@@ -313,10 +322,14 @@ namespace UberEats
 
             ClearGps(player);
             player.Notify(AppName, "Course abandonnée.", NotificationManager.Type.Info, 4f);
-            FindPlayer(order.ClientCharacterId)?.Notify(AppName, $"Votre livreur s'est désisté, nous cherchons quelqu'un d'autre pour la commande #{order.Id}.", NotificationManager.Type.Warning, 6f);
+            Alert(FindPlayer(order.ClientCharacterId), $"Votre livreur s'est désisté, nous cherchons quelqu'un d'autre pour la commande #{order.Id}.", NotificationManager.Type.Warning);
 
             UERestaurant restaurant = await UERestaurant.Query(order.RestaurantId);
-            if (restaurant != null) AlertCouriers(order, restaurant);
+            if (restaurant != null)
+            {
+                NotifyRestaurant(restaurant, $"Le livreur de la commande #{order.Id} s'est désisté.", NotificationManager.Type.Warning, 6f);
+                AlertCouriers(order, restaurant);
+            }
             return true;
         }
     }

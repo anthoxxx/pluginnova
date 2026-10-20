@@ -27,7 +27,7 @@ namespace UberEats
             Panel panel = PanelHelper.Create($"{AppName} - Administration", UIPanel.PanelType.Tab, player, () => AdminMenu(player));
             panel.AddTabLine("Réglages de la plateforme", _ => AdminSettings(player));
             panel.AddTabLine("Métier restaurateur", _ => AdminJob(player));
-            panel.AddTabLine("Points de farm", _ => new FarmPattern(false) { Context = this }.CreateOrGenerate(player));
+            panel.AddTabLine("Points de livraison aléatoires", _ => AdminDeliveryPoints(player));
             panel.AddTabLine($"Restaurants ({restaurants})", _ => AdminRestaurants(player));
             panel.AddTabLine($"Commandes en cours ({activeOrders})", _ => AdminOrders(player));
             panel.AddTabLine($"Livreurs en service ({_onDuty.Count(id => FindPlayer(id) != null)})", _ => AdminCouriers(player));
@@ -62,6 +62,12 @@ namespace UberEats
             Line("Distance de retrait au restaurant (m)", Config.PickupDistance.ToString(CultureInfo.InvariantCulture), v => Config.PickupDistance = Mathf.Max(1, (float)v));
             Line("Délai de réponse du restaurant (min)", Config.PendingTimeoutMinutes.ToString(), v => Config.PendingTimeoutMinutes = Math.Max(1, (int)v));
             Line("Délai max sans livreur (min)", Config.NoCourierTimeoutMinutes.ToString(), v => Config.NoCourierTimeoutMinutes = Math.Max(1, (int)v));
+            Line("Délai entre 2 appels livreur (s)", Config.CourierSearchCooldownSeconds.ToString(), v => Config.CourierSearchCooldownSeconds = Math.Max(0, (int)v));
+            Line("Course aléatoire : paie de base", FormatMoney(Config.RandomMissionBasePay), v => Config.RandomMissionBasePay = v);
+            Line("Course aléatoire : par 100 m", FormatMoney(Config.RandomMissionPer100m), v => Config.RandomMissionPer100m = v);
+            Line("Course aléatoire : paie max", FormatMoney(Config.RandomMissionMaxPay), v => Config.RandomMissionMaxPay = v);
+            Line("Course aléatoire : distance min (m)", Config.RandomMissionMinDistance.ToString(CultureInfo.InvariantCulture), v => Config.RandomMissionMinDistance = Mathf.Max(0, (float)v));
+            Line("Course aléatoire : pause (s)", Config.RandomMissionCooldownSeconds.ToString(), v => Config.RandomMissionCooldownSeconds = Math.Max(0, (int)v));
 
             panel.NextButton("Modifier", () => panel.SelectTab());
             panel.PreviousButton();
@@ -280,6 +286,7 @@ namespace UberEats
                     if (!await fresh.Save()) return false;
 
                     await Pay(fresh.ClientCharacterId, fresh.Total, $"Remboursement commande #{fresh.Id} (staff)");
+                    Alert(FindPlayer(fresh.ClientCharacterId), $"Le staff a clôturé votre commande #{fresh.Id}, vous êtes remboursé.", NotificationManager.Type.Warning);
                     Player courier = FindPlayer(fresh.CourierCharacterId);
                     if (courier != null)
                     {

@@ -60,11 +60,7 @@ namespace UberEats
             Orm.RegisterTable<UEOrder>();
             Orm.RegisterTable<UECourier>();
             Orm.RegisterTable<UEPendingPayment>();
-            Orm.RegisterTable<FarmPattern>();
-
-            // Points de farm : déclenchés par le PointHelper, placés depuis AAMenu (Administration > Points bleus)
-            FarmPattern farmPattern = new FarmPattern(false);
-            PointHelper.AddPattern(nameof(FarmPattern), farmPattern);
+            Orm.RegisterTable<UEDeliveryPoint>();
 
             if (AAMenu.AAMenu.menu != null)
             {
@@ -72,7 +68,6 @@ namespace UberEats
                     MainMenu(PanelHelper.ReturnPlayerFromPanel(ui)));
                 AAMenu.Menu.AddAdminPluginTabLine(PluginInformations, 1, AppName, ui =>
                     AdminMenu(PanelHelper.ReturnPlayerFromPanel(ui)));
-                AAMenu.AAMenu.menu.AddBuilder(PluginInformations, "Farm Uber Eats", farmPattern, this);
             }
             else
             {
@@ -87,7 +82,6 @@ namespace UberEats
         public override async void OnPlayerSpawnCharacter(Player player, NetworkConnection conn, Characters character)
         {
             base.OnPlayerSpawnCharacter(player, conn, character);
-            PointHelper.InitAllNPoint(player);
             await PayPendingPayments(player);
         }
 
@@ -160,14 +154,23 @@ namespace UberEats
             return restaurant.OwnerCharacterId == player.character.Id;
         }
 
+        /// <summary>Évènement important : notification à l'écran + message dans le chat (qui reste lisible).</summary>
+        public static void Alert(Player player, string message, NotificationManager.Type type = NotificationManager.Type.Info, float duration = 8f)
+        {
+            if (player == null) return;
+            player.Notify(AppName, message, type, duration);
+            try { player.SendText($"{Color("[" + AppName + "]", BrandColor)} {message}"); }
+            catch (Exception) { /* le chat n'est pas indispensable */ }
+        }
+
         /// <summary>Prévient le personnel du restaurant en ville (toute l'entreprise, ou le créateur).</summary>
-        public void NotifyRestaurant(UERestaurant restaurant, string message, NotificationManager.Type type, float duration)
+        public void NotifyRestaurant(UERestaurant restaurant, string message, NotificationManager.Type type, float duration, Player except = null)
         {
             IEnumerable<Player> staff = restaurant.BizId != 0
-                ? Nova.server.Players.Where(p => p != null && p.isSpawned && p.character != null && p.character.BizId == restaurant.BizId)
+                ? Nova.server.Players.Where(p => p != null && p.character != null && p.character.BizId == restaurant.BizId)
                 : new[] { FindPlayer(restaurant.OwnerCharacterId) };
-            foreach (Player player in staff.Where(p => p != null))
-                player.Notify($"{AppName} - {restaurant.Name}", message, type, duration);
+            foreach (Player player in staff.Where(p => p != null && p != except))
+                Alert(player, $"{restaurant.Name} : {message}", type, duration);
         }
 
         /// <summary>Les recettes vont dans le compte de l'entreprise (ou au créateur d'un restaurant personnel).</summary>
@@ -212,7 +215,7 @@ namespace UberEats
             }
 
             await Pay(order.ClientCharacterId, order.Total, $"Remboursement commande #{order.Id}");
-            FindPlayer(order.ClientCharacterId)?.Notify(AppName, $"Commande #{order.Id} {(newState == OrderStatus.Refused ? "refusée" : "annulée")} : {reason}", NotificationManager.Type.Warning, 8f);
+            Alert(FindPlayer(order.ClientCharacterId), $"Commande #{order.Id} {(newState == OrderStatus.Refused ? "refusée" : "annulée")} : {reason}. Vous êtes remboursé.", NotificationManager.Type.Warning);
 
             if (order.CourierCharacterId != 0)
             {
@@ -220,7 +223,7 @@ namespace UberEats
                 if (courier != null)
                 {
                     ClearGps(courier);
-                    courier.Notify(AppName, $"La course #{order.Id} a été annulée : {reason}", NotificationManager.Type.Warning, 8f);
+                    Alert(courier, $"La course #{order.Id} a été annulée : {reason}", NotificationManager.Type.Warning);
                 }
             }
 
@@ -263,28 +266,41 @@ namespace UberEats
             await restaurant.Save();
             await PayRestaurant(restaurant, payout, $"{AppName} - commande #{order.Id}");
 
-            courier.Notify(AppName, $"Sac récupéré ! Direction le client {order.ClientName}.", NotificationManager.Type.Success, 6f);
-            FindPlayer(order.ClientCharacterId)?.Notify(AppName, $"{order.CourierName} a récupéré votre commande, il arrive !", NotificationManager.Type.Info, 8f);
+            Alert(courier, $"Sac récupéré ! Direction {order.ClientName}. Demandez-lui son code de confirmation.", NotificationManager.Type.Success);
+            Alert(FindPlayer(order.ClientCharacterId), $"{order.CourierName} a récupéré votre commande #{order.Id}, il arrive ! Votre code de confirmation : {Bold(order.ConfirmationCode)}", NotificationManager.Type.Info, 12f);
+            NotifyRestaurant(restaurant, $"{order.CourierName} a récupéré la commande #{order.Id}.", NotificationManager.Type.Info, 5f);
 
             SetGps(courier, order.Destination, async p => await OnArrivedAtClient(p, order.Id));
             return true;
         }
 
+        /// <summary>Arrivé à l'adresse : on prévient le client et on demande le code au livreur.</summary>
         private async Task OnArrivedAtClient(Player courier, int orderId)
         {
-            if (await TryHandover(courier, orderId)) return;
-
             UEOrder order = await UEOrder.Query(orderId);
             if (order == null || order.State != OrderStatus.Delivering) return;
-            FindPlayer(order.ClientCharacterId)?.Notify(AppName, $"Votre livreur {courier.FullName} est arrivé à l'adresse de livraison !", NotificationManager.Type.Warning, 10f);
+            Alert(FindPlayer(order.ClientCharacterId), $"Votre livreur {courier.FullName} est arrivé ! Donnez-lui votre code : {Bold(order.ConfirmationCode)}", NotificationManager.Type.Warning, 12f);
+            AskConfirmationCode(courier, orderId);
         }
 
-        /// <summary>Remise du sac en main propre : les plats passent dans l'inventaire du client et le livreur est payé.</summary>
-        public async Task<bool> TryHandover(Player courier, int orderId)
+        public static string NewConfirmationCode() => UnityEngine.Random.Range(1000, 10000).ToString();
+
+        /// <summary>
+        /// Remise du sac en main propre, validée par le code du client : les plats passent dans
+        /// son inventaire et le livreur est payé.
+        /// </summary>
+        public async Task<bool> TryHandover(Player courier, int orderId, string code)
         {
             UEOrder order = await UEOrder.Query(orderId);
             if (order == null || order.CourierCharacterId != courier.character.Id || order.State != OrderStatus.Delivering)
                 return false;
+
+            if (!string.IsNullOrEmpty(order.ConfirmationCode) && code?.Trim() != order.ConfirmationCode)
+            {
+                Alert(courier, "Code de confirmation incorrect. Demandez le bon code au client.", NotificationManager.Type.Error, 6f);
+                Alert(FindPlayer(order.ClientCharacterId), $"Le livreur a saisi un mauvais code. Votre code : {Bold(order.ConfirmationCode)}", NotificationManager.Type.Warning, 8f);
+                return false;
+            }
 
             Player client = FindPlayer(order.ClientCharacterId);
             if (client == null)
@@ -330,8 +346,11 @@ namespace UberEats
             await profile.Save();
             await Pay(courier.character.Id, earned, $"Course #{order.Id}" + (bonus > 0 ? $" (bonus {CourierLevel(profile.Deliveries - 1).name} +{bonus}%)" : ""));
 
-            client.Notify(AppName, $"Bon appétit ! Pensez à noter votre commande dans « Mes commandes ».", NotificationManager.Type.Success, 8f);
-            courier.Notify(AppName, $"Course #{order.Id} terminée. Merci !", NotificationManager.Type.Success, 6f);
+            Alert(client, "Commande livrée, bon appétit ! Notez-la dans « Mes commandes ».", NotificationManager.Type.Success);
+            Alert(courier, $"Code validé, course #{order.Id} terminée. Merci !", NotificationManager.Type.Success);
+            UERestaurant restaurant = await UERestaurant.Query(order.RestaurantId);
+            if (restaurant != null)
+                NotifyRestaurant(restaurant, $"Commande #{order.Id} livrée à {order.ClientName}.", NotificationManager.Type.Success, 5f);
             return true;
         }
 
@@ -342,12 +361,13 @@ namespace UberEats
             {
                 long now = Now();
                 int ready = (int)OrderStatus.Ready;
-                List<UEOrder> stale = await UEOrder.Query(o => o.Status <= ready && o.CourierCharacterId == 0);
+                List<UEOrder> stale = await UEOrder.Query(o => o.Status <= ready);
                 foreach (UEOrder order in stale)
                 {
                     if (order.State == OrderStatus.Pending && now - order.CreatedAt > Config.PendingTimeoutMinutes * 60)
                         await CancelOrder(order, OrderStatus.Cancelled, "le restaurant n'a pas répondu à temps");
-                    else if (order.State != OrderStatus.Pending && now - order.UpdatedAt > Config.NoCourierTimeoutMinutes * 60)
+                    else if (order.State != OrderStatus.Pending && order.CourierCharacterId == 0
+                             && now - order.UpdatedAt > Config.NoCourierTimeoutMinutes * 60)
                         await CancelOrder(order, OrderStatus.Cancelled, "aucun livreur disponible");
                 }
             }
@@ -397,18 +417,35 @@ namespace UberEats
             return courier;
         }
 
-        /// <summary>Prévient les livreurs en service qu'une course vient d'apparaître.</summary>
-        public void AlertCouriers(UEOrder order, UERestaurant restaurant)
+        /// <summary>Prévient les livreurs en service qu'une course vient d'apparaître. Renvoie le nombre de livreurs prévenus.</summary>
+        public int AlertCouriers(UEOrder order, UERestaurant restaurant)
         {
+            int alerted = 0;
             foreach (int characterId in _onDuty.ToList())
             {
                 Player courier = FindPlayer(characterId);
                 if (courier == null) { _onDuty.Remove(characterId); continue; }
-                if (characterId == order.ClientCharacterId) continue;
+                if (characterId == order.ClientCharacterId || characterId == order.CourierCharacterId) continue;
 
                 int distance = Mathf.RoundToInt(Vector3.Distance(PositionOf(courier), restaurant.Position));
-                courier.Notify(AppName, $"Nouvelle course : {restaurant.Name} ({distance} m) → {Color(FormatMoney(order.DeliveryFee), Colors.Success)}", NotificationManager.Type.Info, 8f);
+                Alert(courier, $"Course disponible : {restaurant.Name} ({distance} m) - {Color(FormatMoney(order.DeliveryFee), Colors.Success)}. Espace livreur > Courses disponibles.");
+                alerted++;
             }
+            return alerted;
+        }
+
+        /// <summary>Livreurs en service sans course en cours (restaurant ou aléatoire).</summary>
+        public async Task<List<Player>> GetFreeCouriers()
+        {
+            List<Player> free = new List<Player>();
+            foreach (int characterId in _onDuty.ToList())
+            {
+                Player courier = FindPlayer(characterId);
+                if (courier == null) { _onDuty.Remove(characterId); continue; }
+                if (_missions.ContainsKey(characterId) || await GetCurrentJob(characterId) != null) continue;
+                free.Add(courier);
+            }
+            return free;
         }
 
         public void SetGps(Player courier, Vector3 position, Action<Player> onEnter)
@@ -453,7 +490,7 @@ namespace UberEats
 
         public static Player FindPlayer(int characterId)
         {
-            return Nova.server.Players.FirstOrDefault(p => p != null && p.isSpawned && p.character != null && p.character.Id == characterId);
+            return Nova.server.Players.FirstOrDefault(p => p != null && p.character != null && p.character.Id == characterId);
         }
 
         /// <summary>Icône par défaut des lignes TabPrice sans item (même repli que ModKit).</summary>
