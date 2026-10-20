@@ -90,11 +90,12 @@ namespace UberEats
             string itemName = UberEatsPlugin.ItemName(player, farm.ItemId);
             long remaining = RemainingCooldown(player, farm);
 
-            Panel panel = Context.PanelHelper.Create(farm.PatternName, UIPanel.PanelType.Text, player, () => ShowFarm(player, farm));
-            panel.TextLines.Add($"Récolte : {Bold(itemName)} x{farm.MinQuantity}" + (farm.MaxQuantity > farm.MinQuantity ? $" à {farm.MaxQuantity}" : ""));
-            panel.TextLines.Add($"Durée : {farm.DurationSeconds} s (ne bougez pas pendant la récolte)");
+            Panel panel = Context.PanelHelper.Create(farm.PatternName, UIPanel.PanelType.Tab, player, () => ShowFarm(player, farm));
+            panel.AddInfo($"Récolte : {Bold(itemName)} x{farm.MinQuantity}" + (farm.MaxQuantity > farm.MinQuantity ? $" à {farm.MaxQuantity}" : ""));
+            panel.AddInfo($"Durée : {farm.DurationSeconds} s");
+            panel.AddInfo(Color("Ne bougez pas pendant la récolte", Colors.Grey));
             if (remaining > 0)
-                panel.TextLines.Add(Color($"Disponible dans {FormatDuration(remaining)}", Colors.Warning));
+                panel.AddInfo(Color($"Disponible dans {FormatDuration(remaining)}", Colors.Warning));
 
             if (remaining <= 0)
                 panel.CloseButtonWithAction(Color("Récolter", Colors.Success), async () =>
@@ -181,12 +182,15 @@ namespace UberEats
             List<FarmPattern> patterns = await QueryAll();
 
             Panel panel = Context.PanelHelper.Create("Farm - Placer un point", UIPanel.PanelType.Tab, player, () => CreateOrGenerate(player));
+            panel.AddAction(Color("Nouveau modèle", Colors.Success), _ => SetPatternData(player));
+            panel.AddAction("Modifier les modèles", async _ => await GetPatternData(player, true));
+            panel.AddAction("Points placés", async _ => await GetNPoints(player));
             if (patterns.Count == 0)
-                panel.AddTabLine("Aucun modèle, créez-en un", _ => { });
+                panel.AddTabLine(Color("Aucun modèle, créez-en un", Colors.Grey), _ => panel.Refresh());
 
             foreach (FarmPattern pattern in patterns)
             {
-                panel.AddTabLine(pattern.Describe(player), async _ =>
+                panel.AddTabLine("Placer ici : " + pattern.Describe(player), async _ =>
                 {
                     pattern.TypeName = nameof(FarmPattern);
                     pattern.Context = Context;
@@ -194,14 +198,11 @@ namespace UberEats
                         player.Notify("Farm", $"Point « {pattern.PatternName} » placé à votre position.", NotificationManager.Type.Success, 5f);
                     else
                         player.Notify("Farm", "Erreur lors de la création du point.", NotificationManager.Type.Error, 5f);
+                    panel.Refresh();
                 });
             }
 
-            if (patterns.Count > 0)
-                panel.NextButton("Placer ici", () => panel.SelectTab());
-            panel.NextButton("Nouveau modèle", () => SetPatternData(player));
-            panel.NextButton("Modèles", async () => await GetPatternData(player, true));
-            panel.NextButton("Points", async () => await GetNPoints(player));
+            panel.NextButton("Sélectionner", () => panel.SelectTab());
             panel.PreviousButton();
             panel.CloseButton();
             panel.Display();
@@ -264,19 +265,20 @@ namespace UberEats
             string item = pattern.ItemId == 0 ? Color("à choisir", Colors.Error) : $"{UberEatsPlugin.ItemName(player, pattern.ItemId)} (id {pattern.ItemId})";
 
             panel.AddTabLine($"Nom : {pattern.PatternName}", _ => AskText(player, pattern));
-            panel.AddTabLine($"Objet récolté : {item} - choisir dans mon inventaire", _ => ChooseItem(player, patternId));
-            panel.AddTabLine("Objet récolté : saisir un id", _ => AskItemId(player, patternId));
+            panel.AddTabLine($"Objet : {item}", _ => ChooseItem(player, patternId));
+            panel.AddAction("Choisir l'objet (inventaire)", _ => ChooseItem(player, patternId));
+            panel.AddAction("Choisir l'objet (id)", _ => AskItemId(player, patternId));
             panel.AddTabLine($"Quantité minimum : {pattern.MinQuantity}", _ => AskNumber(player, patternId, "Quantité minimum", 1, 1000, (p, v) => { p.MinQuantity = v; p.MaxQuantity = Math.Max(p.MaxQuantity, v); }));
             panel.AddTabLine($"Quantité maximum : {pattern.MaxQuantity}", _ => AskNumber(player, patternId, "Quantité maximum", 1, 1000, (p, v) => { p.MaxQuantity = v; p.MinQuantity = Math.Min(p.MinQuantity, v); }));
             panel.AddTabLine($"Durée de récolte : {pattern.DurationSeconds} s", _ => AskNumber(player, patternId, "Durée de récolte (secondes)", 0, 600, (p, v) => p.DurationSeconds = v));
-            panel.AddTabLine($"Délai entre deux récoltes : {pattern.CooldownSeconds} s", _ => AskNumber(player, patternId, "Délai entre deux récoltes (secondes)", 0, 86400, (p, v) => p.CooldownSeconds = v));
-            panel.AddTabLine("Réservé au métier restaurateur : " + (pattern.RestaurateurOnly ? Color("oui", Colors.Success) : Color("non (tout le monde)", Colors.Warning)), async _ =>
+            panel.AddTabLine($"Délai entre récoltes : {pattern.CooldownSeconds} s", _ => AskNumber(player, patternId, "Délai entre deux récoltes (secondes)", 0, 86400, (p, v) => p.CooldownSeconds = v));
+            panel.AddTabLine("Réservé au métier : " + (pattern.RestaurateurOnly ? Color("oui", Colors.Success) : Color("non (tout le monde)", Colors.Warning)), async _ =>
             {
                 pattern.RestaurateurOnly = !pattern.RestaurateurOnly;
                 await pattern.Save();
                 panel.Refresh();
             });
-            panel.AddTabLine(Color("Supprimer le modèle et ses points", Colors.Error), async _ =>
+            panel.AddAction(Color("Supprimer le modèle", Colors.Error), async _ =>
             {
                 await Context.PointHelper.DeleteNPointsByPattern(player, pattern);
                 await pattern.Delete();
@@ -338,7 +340,7 @@ namespace UberEats
 
             Panel panel = Context.PanelHelper.Create("Farm - Objet récolté", UIPanel.PanelType.TabPrice, player, () => ChooseItem(player, patternId));
             if (inventory.Count == 0)
-                panel.AddTabLine("Inventaire vide : saisissez l'id de l'objet", "", UberEatsPlugin.DefaultIcon, _ => panel.Refresh());
+                panel.AddTabLine("Inventaire vide", "", UberEatsPlugin.DefaultIcon, _ => panel.Refresh());
 
             foreach (int itemId in inventory.Keys)
             {
@@ -383,46 +385,46 @@ namespace UberEats
             return true;
         }
 
-        /// <summary>Liste de tous les points de farm placés : se téléporter, déplacer ou supprimer.</summary>
+        /// <summary>Liste de tous les points de farm placés ; choisir un point ouvre ses actions.</summary>
         public async Task GetNPoints(Player player)
         {
             List<NPoint> points = await ModEntity<NPoint>.Query(p => p.TypeName == nameof(FarmPattern));
             Dictionary<int, string> names = (await QueryAll()).ToDictionary(p => p.Id, p => p.PatternName);
-            string action = "";
 
             Panel panel = Context.PanelHelper.Create("Farm - Points placés", UIPanel.PanelType.Tab, player, async () => await GetNPoints(player));
             if (points.Count == 0)
-                panel.AddTabLine("Aucun point de farm placé", _ => { });
+                panel.AddTabLine(Color("Aucun point de farm placé", Colors.Grey), _ => { });
 
             foreach (NPoint point in points)
             {
                 string name = names.TryGetValue(point.PatternId, out string n) ? n : "?";
-                panel.AddTabLine($"Point #{point.Id} - {name}", async _ =>
-                {
-                    switch (action)
-                    {
-                        case "tp":
-                            Context.PointHelper.PlayerSetPositionToNPoint(player, point);
-                            break;
-                        case "move":
-                            if (await Context.PointHelper.SetNPointPosition(player, point))
-                                player.Notify("Farm", "Point déplacé à votre position.", NotificationManager.Type.Success, 5f);
-                            break;
-                        case "delete":
-                            await Context.PointHelper.DeleteNPoint(point);
-                            player.Notify("Farm", $"Point #{point.Id} supprimé.", NotificationManager.Type.Success, 5f);
-                            panel.Refresh();
-                            break;
-                    }
-                });
+                panel.AddTabLine($"Point #{point.Id} - {name}", _ => PointActions(player, point, name));
             }
 
-            if (points.Count > 0)
+            if (points.Count > 0) panel.NextButton("Sélectionner", () => panel.SelectTab());
+            panel.PreviousButton();
+            panel.CloseButton();
+            panel.Display();
+        }
+
+        private void PointActions(Player player, NPoint point, string name)
+        {
+            Panel panel = Context.PanelHelper.Create($"Farm - Point #{point.Id}", UIPanel.PanelType.Tab, player, () => PointActions(player, point, name));
+            panel.AddInfo($"{name} - à {Mathf.RoundToInt(Vector3.Distance(UberEatsPlugin.PositionOf(player), point.VPosition))} m");
+            panel.AddAction("Se téléporter", _ => Context.PointHelper.PlayerSetPositionToNPoint(player, point));
+            panel.AddAction("Déplacer ici", async _ =>
             {
-                panel.AddButton("Se téléporter", _ => { action = "tp"; panel.SelectTab(); });
-                panel.AddButton("Déplacer ici", _ => { action = "move"; panel.SelectTab(); });
-                panel.AddButton(Color("Supprimer", Colors.Error), _ => { action = "delete"; panel.SelectTab(); });
-            }
+                if (await Context.PointHelper.SetNPointPosition(player, point))
+                    player.Notify("Farm", "Point déplacé à votre position.", NotificationManager.Type.Success, 5f);
+                panel.Refresh();
+            });
+            panel.AddAction(Color("Supprimer", Colors.Error), async _ =>
+            {
+                await Context.PointHelper.DeleteNPoint(point);
+                player.Notify("Farm", $"Point #{point.Id} supprimé.", NotificationManager.Type.Success, 5f);
+                panel.Previous();
+            });
+            panel.NextButton("Sélectionner", () => panel.SelectTab());
             panel.PreviousButton();
             panel.CloseButton();
             panel.Display();

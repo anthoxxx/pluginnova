@@ -88,14 +88,15 @@ namespace UberEats
             UECourier profile = await GetOrCreateCourier(player);
             (string name, double bonus, int next) level = CourierLevel(profile.Deliveries);
 
-            Panel panel = PanelHelper.Create("Mon profil livreur", UIPanel.PanelType.Text, player, () => CourierProfile(player));
-            panel.TextLines.Add($"{Bold(player.FullName)} - {Color(level.name, BrandColor)}" + (level.bonus > 0 ? Color($" (+{level.bonus}% par course)", Colors.Success) : ""));
-            panel.TextLines.Add(level.next > 0 ? $"Prochain niveau dans {level.next - profile.Deliveries} course(s)" : Color("Niveau maximum atteint !", Colors.Warning));
-            panel.TextLines.Add("");
-            panel.TextLines.Add($"Courses effectuées : {profile.Deliveries}");
-            panel.TextLines.Add($"Note moyenne : {FormatRating(profile.Rating, profile.RatingCount)}");
-            panel.TextLines.Add($"Gains totaux : {FormatMoney(profile.Earnings)} (dont {FormatMoney(profile.Tips)} de pourboires)");
-            panel.TextLines.Add($"Transport : {profile.Transport}");
+            Panel panel = PanelHelper.Create("Mon profil livreur", UIPanel.PanelType.Tab, player, () => CourierProfile(player));
+            panel.AddInfo($"{Bold(player.FullName)} - {Color(level.name, BrandColor)}");
+            if (level.bonus > 0) panel.AddInfo(Color($"Bonus : +{level.bonus}% par course", Colors.Success));
+            panel.AddInfo(level.next > 0 ? $"Prochain niveau dans {level.next - profile.Deliveries} course(s)" : Color("Niveau maximum atteint !", Colors.Warning));
+            panel.AddInfo($"Courses effectuées : {profile.Deliveries}");
+            panel.AddInfo($"Note moyenne : {FormatRating(profile.Rating, profile.RatingCount)}");
+            panel.AddInfo($"Gains totaux : {FormatMoney(profile.Earnings)}");
+            panel.AddInfo($"Dont pourboires : {FormatMoney(profile.Tips)}");
+            panel.AddInfo($"Transport : {profile.Transport}");
             panel.PreviousButton();
             panel.CloseButton();
             panel.Display();
@@ -162,15 +163,20 @@ namespace UberEats
             double bonus = CourierLevel(profile.Deliveries).bonus;
             Vector3 here = PositionOf(player);
 
-            Panel panel = PanelHelper.Create($"Course #{order.Id}", UIPanel.PanelType.Text, player, () => JobDetails(player, orderId));
-            panel.TextLines.Add($"Retrait : {Bold(restaurant.Name)} à {Mathf.RoundToInt(Vector3.Distance(here, restaurant.Position))} m ({StatusLabel(order.State)})");
-            panel.TextLines.Add($"Livraison : {order.ClientName}, à {Mathf.RoundToInt(Vector3.Distance(restaurant.Position, order.Destination))} m du restaurant");
-            panel.TextLines.Add($"Sac : {order.ItemsCount} article(s)");
-            panel.TextLines.Add($"Rémunération : {Color(FormatMoney(order.DeliveryFee * (1 + bonus / 100.0)), Colors.Success)}" + (bonus > 0 ? $" (bonus +{bonus}% inclus)" : "") + " + pourboire éventuel");
+            Panel panel = PanelHelper.Create($"Course #{order.Id}", UIPanel.PanelType.Tab, player, () => JobDetails(player, orderId));
+            panel.AddInfo($"Retrait : {Bold(restaurant.Name)} ({StatusLabel(order.State)})");
+            panel.AddInfo($"   à {Mathf.RoundToInt(Vector3.Distance(here, restaurant.Position))} m de vous");
+            panel.AddInfo($"Client : {order.ClientName}");
+            panel.AddInfo($"   à {Mathf.RoundToInt(Vector3.Distance(restaurant.Position, order.Destination))} m du restaurant");
+            panel.AddInfo($"Sac : {order.ItemsCount} article(s)");
+            panel.AddInfo($"Gain : {Color(FormatMoney(order.DeliveryFee * (1 + bonus / 100.0)), Colors.Success)}" + (bonus > 0 ? $" (bonus +{bonus}%)" : "") + " + pourboire");
             if (!string.IsNullOrEmpty(order.Note))
-                panel.TextLines.Add(Italic($"Instructions : {order.Note}"));
+            {
+                panel.AddInfo("Instructions :");
+                panel.AddWrapped(order.Note);
+            }
 
-            panel.CloseButtonWithAction(Color("Accepter la course", Colors.Success), () => AcceptJob(player, orderId));
+            panel.CloseButtonWithAction(Color("Accepter", Colors.Success), () => AcceptJob(player, orderId));
             panel.PreviousButton();
             panel.CloseButton();
             panel.Display();
@@ -226,49 +232,67 @@ namespace UberEats
             Vector3 here = PositionOf(player);
             int orderId = order.Id;
 
-            Panel panel = PanelHelper.Create($"Ma course #{order.Id}", UIPanel.PanelType.Text, player, () => CurrentJob(player));
-            panel.TextLines.Add($"{Bold(order.RestaurantName)} > {Bold(order.ClientName)} - {StatusLabel(order.State)}");
-            panel.TextLines.Add($"Sac : {OrderSummary(player, order)}");
+            Panel panel = PanelHelper.Create($"Ma course #{order.Id}", UIPanel.PanelType.Tab, player, () => CurrentJob(player));
+            panel.AddInfo($"{Bold(order.RestaurantName)} > {Bold(order.ClientName)}");
+            panel.AddInfo($"État : {StatusLabel(order.State)}");
+            panel.AddOrderLines(player, order);
             if (!string.IsNullOrEmpty(order.Note))
-                panel.TextLines.Add(Italic($"Instructions : {order.Note}"));
+            {
+                panel.AddInfo("Instructions :");
+                panel.AddWrapped(order.Note);
+            }
 
             if (order.State != OrderStatus.Delivering)
             {
                 if (restaurant != null)
-                    panel.TextLines.Add($"Restaurant à {Mathf.RoundToInt(Vector3.Distance(here, restaurant.Position))} m");
-                panel.AddButton("GPS restaurant", _ =>
+                    panel.AddInfo($"Restaurant à {Mathf.RoundToInt(Vector3.Distance(here, restaurant.Position))} m");
+                panel.AddAction(Color("Récupérer le sac", Colors.Success), async _ =>
                 {
-                    if (restaurant == null) return;
-                    SetGps(player, restaurant.Position, async p => await TryPickup(p, orderId));
-                    player.Notify(AppName, "Point GPS placé sur le restaurant.", NotificationManager.Type.Info, 4f);
+                    await TryPickup(player, orderId);
+                    panel.Refresh();
                 });
-                panel.AddButton(Color("Récupérer le sac", Colors.Success), async _ =>
+                panel.AddAction("GPS vers le restaurant", _ =>
                 {
-                    if (await TryPickup(player, orderId)) panel.Refresh();
+                    if (restaurant != null)
+                    {
+                        SetGps(player, restaurant.Position, async p => await TryPickup(p, orderId));
+                        player.Notify(AppName, "Point GPS placé sur le restaurant.", NotificationManager.Type.Info, 4f);
+                    }
+                    panel.Refresh();
                 });
-                panel.PreviousButtonWithAction(Color("Abandonner", Colors.Error), () => AbandonJob(player, orderId));
+                panel.AddAction(Color("Abandonner la course", Colors.Error), async _ =>
+                {
+                    if (await AbandonJob(player, orderId)) panel.Previous();
+                    else panel.Refresh();
+                });
             }
             else
             {
-                panel.TextLines.Add($"Adresse de livraison à {Mathf.RoundToInt(Vector3.Distance(here, order.Destination))} m");
+                panel.AddInfo($"Adresse de livraison à {Mathf.RoundToInt(Vector3.Distance(here, order.Destination))} m");
                 Player client = FindPlayer(order.ClientCharacterId);
-                panel.TextLines.Add(client != null
-                    ? $"Le client est à {Mathf.RoundToInt(Vector3.Distance(here, PositionOf(client)))} m de vous"
+                panel.AddInfo(client != null
+                    ? $"Le client est à {Mathf.RoundToInt(Vector3.Distance(here, PositionOf(client)))} m"
                     : Color("Le client n'est pas en ville", Colors.Error));
 
-                panel.AddButton("GPS client", _ =>
+                panel.AddAction(Color("Remettre le sac", Colors.Success), async _ =>
+                {
+                    if (!await TryHandover(player, orderId)) panel.Refresh();
+                });
+                panel.AddAction("GPS vers le client", _ =>
                 {
                     SetGps(player, order.Destination, async p => await OnArrivedAtClient(p, orderId));
                     player.Notify(AppName, "Point GPS placé sur l'adresse de livraison.", NotificationManager.Type.Info, 4f);
+                    panel.Refresh();
                 });
-                panel.CloseButtonWithAction(Color("Remettre le sac", Colors.Success), () => TryHandover(player, orderId));
-                panel.AddButton("Prévenir le client", _ =>
+                panel.AddAction("Prévenir le client", _ =>
                 {
                     FindPlayer(order.ClientCharacterId)?.Notify(AppName, $"Votre livreur {player.FullName} vous attend avec votre commande !", NotificationManager.Type.Warning, 10f);
                     player.Notify(AppName, "Le client a été prévenu.", NotificationManager.Type.Info, 4f);
+                    panel.Refresh();
                 });
             }
 
+            panel.NextButton("Sélectionner", () => panel.SelectTab());
             panel.PreviousButton();
             panel.CloseButton();
             panel.Display();

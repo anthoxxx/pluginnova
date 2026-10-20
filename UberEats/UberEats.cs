@@ -508,6 +508,51 @@ namespace UberEats
         }
     }
 
+    public static class PanelExtensions
+    {
+        /// <summary>
+        /// Ligne d'information non cliquable. Les menus Tab défilent : contrairement au texte d'un
+        /// menu Text, ces lignes ne débordent jamais les unes sur les autres ni sur les boutons.
+        /// </summary>
+        public static void AddInfo(this Panel panel, string text)
+        {
+            if (!string.IsNullOrEmpty(text)) panel.AddTabLine(text, _ => { });
+        }
+
+        /// <summary>
+        /// Action sous forme de ligne (validée avec « Sélectionner ») : on garde au plus 3-4 boutons
+        /// par menu, au-delà leurs libellés se chevauchent.
+        /// </summary>
+        public static void AddAction(this Panel panel, string label, Action<UIPanel> action)
+        {
+            panel.AddTabLine(Bold("» " + label), action);
+        }
+
+        /// <summary>Texte libre (description, instructions…) découpé en lignes courtes.</summary>
+        public static void AddWrapped(this Panel panel, string text, int width = 45)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return;
+            string line = "";
+            foreach (string word in text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (line.Length > 0 && line.Length + 1 + word.Length > width)
+                {
+                    panel.AddInfo(Italic(line));
+                    line = "";
+                }
+                line = line.Length == 0 ? word : line + " " + word;
+            }
+            panel.AddInfo(Italic(line));
+        }
+
+        /// <summary>Une ligne par plat de la commande (plutôt qu'une longue phrase).</summary>
+        public static void AddOrderLines(this Panel panel, Player viewer, UEOrder order)
+        {
+            foreach (OrderLine line in order.Lines)
+                panel.AddInfo($"   {line.Quantity}x {UberEatsPlugin.ItemName(viewer, line.ItemId)}");
+        }
+    }
+
     /// <summary>Panier d'un client : un seul restaurant à la fois.</summary>
     public class Cart
     {

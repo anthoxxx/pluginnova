@@ -37,12 +37,6 @@ namespace UberEats
             return (await UERestaurant.Query(r => r.OwnerCharacterId == characterId && r.BizId == 0)).FirstOrDefault();
         }
 
-        /// <summary>Avec le verrou métier, seul le patron de l'entreprise crée ou ferme le restaurant.</summary>
-        private bool IsRestaurantBoss(Player player)
-        {
-            return !Config.RestaurantRequiresJob || (player.HasBiz && player.biz != null && player.biz.OwnerId == player.character.Id);
-        }
-
         private async void RestaurantSpace(Player player)
         {
             if (!IsRestaurateur(player))
@@ -54,24 +48,18 @@ namespace UberEats
             UERestaurant restaurant = await GetOwnRestaurant(player);
             if (restaurant == null)
             {
-                bool boss = IsRestaurantBoss(player);
-                Panel intro = PanelHelper.Create("Devenir partenaire", UIPanel.PanelType.Text, player, () => RestaurantSpace(player));
-                intro.TextLines.Add(Config.RestaurantRequiresJob
+                Panel intro = PanelHelper.Create("Devenir partenaire", UIPanel.PanelType.Tab, player, () => RestaurantSpace(player));
+                intro.AddInfo(Config.RestaurantRequiresJob
                     ? $"Inscrivez {Bold(player.biz?.BizName ?? "votre entreprise")} sur {Color(AppName, BrandColor)} !"
                     : $"Ouvrez votre restaurant sur {Color(AppName, BrandColor)} !");
-                intro.TextLines.Add("Déposez vos plats en stock, fixez vos prix : les clients commandent,");
-                intro.TextLines.Add("les livreurs indépendants s'occupent du reste.");
-                intro.TextLines.Add("");
-                intro.TextLines.Add($"Inscription : {Bold(FormatMoney(Config.RestaurantCreationCost))}"
-                                    + (Config.RestaurantRequiresJob ? " (payée par l'entreprise)" : "")
-                                    + $" - commission : {Config.CommissionPercent}% par commande");
+                intro.AddInfo("Vous mettez vos plats en stock et fixez vos prix,");
+                intro.AddInfo("les livreurs indépendants s'occupent du reste.");
+                intro.AddInfo($"Inscription : {Bold(FormatMoney(Config.RestaurantCreationCost))}" + (Config.RestaurantRequiresJob ? " (entreprise)" : ""));
+                intro.AddInfo($"Commission : {Config.CommissionPercent}% par commande");
                 if (Config.RestaurantRequiresJob)
-                    intro.TextLines.Add(Color("Recettes versées sur le compte de l'entreprise, tous les employés gèrent le restaurant.", Colors.Grey));
-                intro.TextLines.Add(Color("Le point de retrait des commandes sera placé à votre position.", Colors.Grey));
-                if (boss)
-                    intro.NextButton(Color("Ouvrir mon restaurant", Colors.Success), () => CreateRestaurant(player));
-                else
-                    intro.TextLines.Add(Color("Seul le patron de l'entreprise peut inscrire le restaurant.", Colors.Warning));
+                    intro.AddInfo(Color("Recettes sur le compte de l'entreprise", Colors.Grey));
+                intro.AddInfo(Color("Point de retrait placé à votre position", Colors.Grey));
+                intro.NextButton(Color("Inscrire", Colors.Success), () => CreateRestaurant(player));
                 intro.PreviousButton();
                 intro.CloseButton();
                 intro.Display();
@@ -147,7 +135,7 @@ namespace UberEats
         private async Task<bool> ConfirmCreateRestaurant(Player player, string name, string category)
         {
             int characterId = player.character.Id;
-            if (!IsRestaurateur(player) || !IsRestaurantBoss(player)) return true;
+            if (!IsRestaurateur(player)) return true;
             if (await GetOwnRestaurant(player) != null)
             {
                 player.Notify(AppName, "Vous avez déjà un restaurant.", NotificationManager.Type.Error, 5f);
@@ -202,8 +190,7 @@ namespace UberEats
 
             foreach (UEOrder order in orders)
             {
-                string courier = order.CourierCharacterId != 0 ? $" - livreur : {order.CourierName}" : "";
-                panel.AddTabLine($"#{order.Id} {order.ClientName} - {order.ItemsCount} article(s) - {StatusLabel(order.State)} - {FormatAgo(order.CreatedAt)}{courier}",
+                panel.AddTabLine($"#{order.Id} {order.ClientName} - {order.ItemsCount} art. - {StatusLabel(order.State)}",
                     _ => RestaurantOrderDetails(player, order.Id));
             }
 
@@ -221,26 +208,41 @@ namespace UberEats
 
             double payout = Math.Round(order.Subtotal * (1 - Config.CommissionPercent / 100.0), 2);
 
-            Panel panel = PanelHelper.Create($"Commande #{order.Id} - cuisine", UIPanel.PanelType.Text, player, () => RestaurantOrderDetails(player, orderId));
-            panel.TextLines.Add($"Client : {Bold(order.ClientName)} - {StatusLabel(order.State)}");
-            panel.TextLines.Add($"À préparer : {OrderSummary(player, order)}");
-            panel.TextLines.Add($"Montant : {FormatMoney(order.Subtotal)} - vous recevrez {Color(FormatMoney(payout), Colors.Success)} au retrait du sac");
-            panel.TextLines.Add(order.CourierCharacterId != 0 ? $"Livreur : {order.CourierName} ({order.CourierTransport})" : Color("Pas encore de livreur", Colors.Grey));
+            Panel panel = PanelHelper.Create($"Commande #{order.Id} - cuisine", UIPanel.PanelType.Tab, player, () => RestaurantOrderDetails(player, orderId));
+            panel.AddInfo($"Client : {Bold(order.ClientName)} ({FormatAgo(order.CreatedAt)})");
+            panel.AddInfo($"État : {StatusLabel(order.State)}");
+            panel.AddInfo("À préparer :");
+            panel.AddOrderLines(player, order);
+            panel.AddInfo($"Vous recevrez {Color(FormatMoney(payout), Colors.Success)} au retrait du sac");
+            panel.AddInfo(order.CourierCharacterId != 0 ? $"Livreur : {order.CourierName} ({order.CourierTransport})" : Color("Pas encore de livreur", Colors.Grey));
             if (!string.IsNullOrEmpty(order.Note))
-                panel.TextLines.Add(Italic($"Note du client : {order.Note}"));
+            {
+                panel.AddInfo("Note du client :");
+                panel.AddWrapped(order.Note);
+            }
+
+            void Step(string label, Func<Task<bool>> action)
+            {
+                panel.AddAction(label, async _ =>
+                {
+                    if (await action()) panel.Previous();
+                    else panel.Refresh();
+                });
+            }
 
             if (order.State == OrderStatus.Pending)
             {
-                panel.PreviousButtonWithAction(Color("Accepter", Colors.Success), () => AdvanceOrder(player, orderId, OrderStatus.Preparing));
-                panel.PreviousButtonWithAction(Color("Accepter et prête", Colors.Info), () => AdvanceOrder(player, orderId, OrderStatus.Ready));
+                Step(Color("Accepter (en cuisine)", Colors.Success), () => AdvanceOrder(player, orderId, OrderStatus.Preparing));
+                Step(Color("Accepter, déjà prête", Colors.Info), () => AdvanceOrder(player, orderId, OrderStatus.Ready));
             }
             else if (order.State == OrderStatus.Preparing)
             {
-                panel.PreviousButtonWithAction(Color("Commande prête", Colors.Success), () => AdvanceOrder(player, orderId, OrderStatus.Ready));
+                Step(Color("Commande prête", Colors.Success), () => AdvanceOrder(player, orderId, OrderStatus.Ready));
             }
             if (order.IsCancellable)
-                panel.PreviousButtonWithAction(Color("Refuser", Colors.Error), () => CancelOrder(order, OrderStatus.Refused, "refusée par le restaurant"));
+                Step(Color("Refuser (client remboursé)", Colors.Error), () => CancelOrder(order, OrderStatus.Refused, "refusée par le restaurant"));
 
+            if (order.IsCancellable) panel.NextButton("Sélectionner", () => panel.SelectTab());
             panel.PreviousButton();
             panel.CloseButton();
             panel.Display();
@@ -305,15 +307,16 @@ namespace UberEats
                 .Select(g => new { ItemId = g.Key, Quantity = g.Sum(l => l.Quantity) })
                 .OrderByDescending(x => x.Quantity).FirstOrDefault();
 
-            Panel panel = PanelHelper.Create("Statistiques", UIPanel.PanelType.Text, player, () => RestaurantStats(player, restaurantId));
-            panel.TextLines.Add($"{Bold(restaurant.Name)} - {restaurant.Category}");
-            panel.TextLines.Add($"Note : {FormatRating(restaurant.Rating, restaurant.RatingCount)}");
-            panel.TextLines.Add($"Commandes livrées : {restaurant.OrdersCount}");
-            panel.TextLines.Add($"Chiffre d'affaires (net) : {Color(FormatMoney(restaurant.Revenue), Colors.Success)}");
-            panel.TextLines.Add($"Commandes annulées / refusées : {orders.Count(o => o.State == OrderStatus.Cancelled || o.State == OrderStatus.Refused)}");
+            Panel panel = PanelHelper.Create("Statistiques", UIPanel.PanelType.Tab, player, () => RestaurantStats(player, restaurantId));
+            panel.AddInfo($"{Bold(restaurant.Name)} - {restaurant.Category}");
+            panel.AddInfo($"Note : {FormatRating(restaurant.Rating, restaurant.RatingCount)}");
+            panel.AddInfo($"Commandes livrées : {restaurant.OrdersCount}");
+            panel.AddInfo($"Chiffre d'affaires net : {Color(FormatMoney(restaurant.Revenue), Colors.Success)}");
+            panel.AddInfo($"Annulées / refusées : {orders.Count(o => o.State == OrderStatus.Cancelled || o.State == OrderStatus.Refused)}");
             if (best != null)
-                panel.TextLines.Add($"Plat star : {ItemName(player, best.ItemId)} ({best.Quantity} vendus)");
-            panel.TextLines.Add($"Plats à la carte : {menu.Count} - articles en stock : {menu.Sum(m => m.Stock)}");
+                panel.AddInfo($"Plat star : {ItemName(player, best.ItemId)} ({best.Quantity} vendus)");
+            panel.AddInfo($"Plats à la carte : {menu.Count}");
+            panel.AddInfo($"Articles en stock : {menu.Sum(m => m.Stock)}");
             panel.PreviousButton();
             panel.CloseButton();
             panel.Display();
@@ -329,18 +332,18 @@ namespace UberEats
 
             Panel panel = PanelHelper.Create("Ma carte", UIPanel.PanelType.TabPrice, player, () => MenuManager(player, restaurantId));
             if (items.Count == 0)
-                panel.AddTabLine("Carte vide : ajoutez un plat depuis votre inventaire", "", DefaultIcon, _ => panel.Refresh());
+                panel.AddTabLine("Carte vide", "", DefaultIcon, _ => panel.Refresh());
 
             foreach (UEMenuItem item in items)
             {
-                string stock = item.Stock > 0 ? Color($"stock {item.Stock}", Colors.Success) : Color("rupture", Colors.Error);
-                string hidden = item.IsAvailable ? "" : Color(" (masqué)", Colors.Grey);
-                panel.AddTabLine($"{ItemName(player, item.ItemId)} - {stock}{hidden}", FormatMoney(item.Price), ItemUtils.GetIconIdByItemId(item.ItemId),
+                string stock = item.Stock > 0 ? Color($"x{item.Stock}", Colors.Success) : Color("x0", Colors.Error);
+                string hidden = item.IsAvailable ? "" : Color(" masqué", Colors.Grey);
+                panel.AddTabLine($"{ItemName(player, item.ItemId)} {stock}{hidden}", FormatMoney(item.Price), ItemUtils.GetIconIdByItemId(item.ItemId),
                     _ => MenuItemDetails(player, item.Id));
             }
 
             if (items.Count > 0) panel.NextButton("Gérer", () => panel.SelectTab());
-            panel.NextButton(Color("Ajouter un plat", Colors.Success), () => AddMenuItem(player, restaurantId));
+            panel.NextButton(Color("Ajouter", Colors.Success), () => AddMenuItem(player, restaurantId));
             panel.PreviousButton();
             panel.CloseButton();
             panel.Display();
@@ -374,8 +377,7 @@ namespace UberEats
         {
             string name = ItemName(player, itemId);
             Panel panel = PanelHelper.Create($"Prix : {name}", UIPanel.PanelType.Input, player, () => AskPrice(player, existing, restaurantId, itemId));
-            panel.TextLines.Add($"Prix de vente de {Bold(name)} (à l'unité) :");
-            panel.TextLines.Add(Color($"Vous toucherez ce prix moins {Config.CommissionPercent}% de commission.", Colors.Grey));
+            panel.TextLines.Add($"Prix à l'unité (commission {Config.CommissionPercent}%)");
             panel.SetInputPlaceholder(existing != null ? existing.Price.ToString("0.00") : "10");
 
             panel.PreviousButtonWithAction("Valider", async () =>
@@ -439,9 +441,7 @@ namespace UberEats
         {
             string name = ItemName(player, item.ItemId);
             Panel panel = PanelHelper.Create(deposit ? $"Déposer : {name}" : $"Reprendre : {name}", UIPanel.PanelType.Input, player, () => AskStock(player, item, deposit));
-            panel.TextLines.Add(deposit
-                ? $"Combien de {name} mettre en vente ? (pris dans votre inventaire)"
-                : $"Combien de {name} reprendre ? (stock actuel : {item.Stock})");
+            panel.TextLines.Add(deposit ? "Quantité à mettre en vente" : $"Quantité à reprendre (stock : {item.Stock})");
             panel.SetInputPlaceholder("Quantité");
 
             panel.PreviousButtonWithAction("Valider", async () =>
@@ -530,8 +530,7 @@ namespace UberEats
                 player.Notify(AppName, "Point de retrait déplacé à votre position.", NotificationManager.Type.Success, 5f);
                 panel.Refresh();
             });
-            if (IsRestaurantBoss(player))
-                panel.AddTabLine(Color("Fermer définitivement le restaurant", Colors.Error), _ => ConfirmDeleteRestaurant(player, restaurantId));
+            panel.AddTabLine(Color("Fermer définitivement le restaurant", Colors.Error), _ => ConfirmDeleteRestaurant(player, restaurantId));
 
             panel.NextButton("Sélectionner", () => panel.SelectTab());
             panel.PreviousButton();
@@ -542,7 +541,7 @@ namespace UberEats
         private void AskRestaurantText(Player player, int restaurantId, bool isName)
         {
             Panel panel = PanelHelper.Create(isName ? "Renommer le restaurant" : "Description du restaurant", UIPanel.PanelType.Input, player, () => AskRestaurantText(player, restaurantId, isName));
-            panel.TextLines.Add(isName ? "Nouveau nom (40 caractères max) :" : "Présentez votre cuisine en une phrase (120 caractères max) :");
+            panel.TextLines.Add(isName ? "Nouveau nom (40 caractères max)" : "Une phrase (120 caractères max)");
             panel.SetInputPlaceholder(isName ? "Chez Loris" : "Les meilleurs burgers d'Amboise !");
 
             panel.PreviousButtonWithAction("Valider", async () =>
@@ -566,10 +565,10 @@ namespace UberEats
 
         private void ConfirmDeleteRestaurant(Player player, int restaurantId)
         {
-            Panel panel = PanelHelper.Create("Fermeture définitive", UIPanel.PanelType.Text, player, () => ConfirmDeleteRestaurant(player, restaurantId));
-            panel.TextLines.Add(Color("Votre restaurant sera supprimé de la plateforme.", Colors.Error));
-            panel.TextLines.Add("Le stock restant est rendu dans votre inventaire.");
-            panel.TextLines.Add("L'inscription n'est pas remboursée.");
+            Panel panel = PanelHelper.Create("Fermeture définitive", UIPanel.PanelType.Tab, player, () => ConfirmDeleteRestaurant(player, restaurantId));
+            panel.AddInfo(Color("Le restaurant sera supprimé.", Colors.Error));
+            panel.AddInfo("Le stock restant vous est rendu.");
+            panel.AddInfo("L'inscription n'est pas remboursée.");
 
             panel.CloseButtonWithAction(Color("Confirmer", Colors.Error), async () =>
             {

@@ -55,10 +55,10 @@ Client commande et paie ──► Restaurant accepte / prépare ──► Livreu
 - **Classement des livreurs** (top 10) visible par tous.
 
 ### Restaurateur partenaire (métier)
-- Accès réservé aux employés d'une entreprise autorisée : par **activité** (par défaut `Chef`) ou
-  par **entreprise** choisie par le staff. Les autres joueurs voient la ligne grisée.
-- Le restaurant **appartient à l'entreprise** : seul le **patron** l'inscrit (payé par le compte de
-  l'entreprise) ou le ferme définitivement ; **tous les employés** le gèrent et reçoivent les
+- Accès réservé au **patron et aux employés** d'une entreprise autorisée : par **activité** (par
+  défaut `Chef`) ou par **entreprise** choisie par le staff. Les autres joueurs voient la ligne grisée.
+- Le restaurant **appartient à l'entreprise** : n'importe quel membre (patron ou employé) peut
+  l'inscrire (payé par le compte de l'entreprise), le gérer ou le fermer ; tous reçoivent les
   notifications ; les recettes vont sur le **compte de l'entreprise**.
 - Le verrou peut être désactivé par le staff : chacun ouvre alors un restaurant personnel.
 - **Ouvrir mon restaurant** : nom, type de cuisine ; le point de retrait est placé à sa position.
@@ -98,3 +98,8 @@ Uber Eats → Points de farm**.
 - Points de farm (voir plus haut).
 - Restaurants : suspendre / lever la suspension, supprimer.
 - Commandes en cours : annuler et rembourser (litiges), livreurs en service, classement.
+
+## Affichage
+Les fiches (commande, course, statistiques…) sont des listes déroulantes : une info par ligne, et
+au plus 4 boutons par menu. Les actions en plus sont des lignes « » … » à valider avec **Sélectionner**.
+Ainsi, aucun texte ne passe par-dessus un autre.
