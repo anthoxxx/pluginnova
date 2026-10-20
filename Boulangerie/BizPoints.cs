@@ -29,7 +29,8 @@ namespace Boulangerie
 
         private static string TypeName => typeof(T).Name;
 
-        public static async void CreateOrGenerate(T self, Player player, string label, string example)
+        /// <param name="fromPluginMenu">Vrai si ouvert depuis la configuration (Retour = menu précédent), faux depuis AAMenu.</param>
+        public static async void CreateOrGenerate(T self, Player player, string label, string example, bool fromPluginMenu = false)
         {
             if (!BoulangeriePlugin.IsStaff(player))
             {
@@ -39,7 +40,7 @@ namespace Boulangerie
             ModKit.ModKit ctx = self.Context ?? BoulangeriePlugin.Instance;
 
             List<T> patterns = await ModEntity<T>.QueryAll();
-            Panel panel = ctx.PanelHelper.Create(BoulangeriePlugin.Brand($"{label} - Placer un point"), UIPanel.PanelType.Tab, player, () => CreateOrGenerate(self, player, label, example));
+            Panel panel = ctx.PanelHelper.Create(BoulangeriePlugin.Brand($"{label} - Placer un point"), UIPanel.PanelType.Tab, player, () => CreateOrGenerate(self, player, label, example, fromPluginMenu));
 
             if (patterns.Count == 0)
                 panel.AddTabLine("Aucun modèle, créez-en un", _ => panel.Refresh());
@@ -62,6 +63,7 @@ namespace Boulangerie
             panel.NextButton("Nouveau modèle", () => NewPattern(ctx, player, label, example));
             panel.NextButton("Modèles", () => Patterns(ctx, player, label));
             panel.NextButton("Points", () => Points(ctx, player, label));
+            BoulangeriePlugin.BackButton(panel, fromPluginMenu, m => m.AdminPointsPanel(player));
             panel.CloseButton();
             panel.Display();
         }

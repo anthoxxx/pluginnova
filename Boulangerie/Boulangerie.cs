@@ -283,6 +283,18 @@ namespace Boulangerie
             });
         }
 
+        /// <summary>
+        /// Bouton « Retour » d'un menu racine : retour au menu précédent si on vient d'un autre
+        /// menu du plugin, sinon retour dans AAMenu (<paramref name="aaMenuBack"/>).
+        /// </summary>
+        public static void BackButton(Panel panel, bool fromPluginMenu, Action<AAMenu.Menu> aaMenuBack)
+        {
+            if (fromPluginMenu)
+                panel.PreviousButton();
+            else if (AAMenu.AAMenu.menu != null)
+                panel.AddButton("Retour", _ => { panel.Close(); aaMenuBack(AAMenu.AAMenu.menu); });
+        }
+
         /// <summary>Panel de saisie simple : retourne au panel précédent si <paramref name="onValidate"/> renvoie vrai.</summary>
         public void AskInput(Player player, string title, string text, string placeholder, Func<string, Task<bool>> onValidate)
         {
@@ -442,8 +454,8 @@ namespace Boulangerie
                 }
                 ChooseBiz(player, "Boulangerie - Choisir la boulangerie", bizIds, (p, biz) => { player.ClosePanel(p); ManageMenu(player, biz.Id); return Task.CompletedTask; });
             });
-            panel.AddTabLine(Color("Placer / gérer les caisses", Colors.Info), "", none, _ => new CashRegister(false) { Context = this }.CreateOrGenerate(player));
-            panel.AddTabLine(Color("Placer / gérer les cartes client (carte + paiement)", Colors.Info), "", none, _ => new MenuBoard(false) { Context = this }.CreateOrGenerate(player));
+            panel.AddTabLine(Color("Placer / gérer les caisses", Colors.Info), "", none, _ => new CashRegister(false) { Context = this }.CreateOrGenerate(player, true));
+            panel.AddTabLine(Color("Placer / gérer les cartes client (carte + paiement)", Colors.Info), "", none, _ => BizPointAdmin<MenuBoard>.CreateOrGenerate(new MenuBoard(false) { Context = this }, player, MenuBoard.Label, "Carte de la boulangerie", true));
 
             panel.NextButton("Sélectionner", () => panel.SelectTab());
             if (AAMenu.AAMenu.menu != null)

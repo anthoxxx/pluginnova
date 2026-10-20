@@ -216,7 +216,7 @@ namespace Boulangerie
                 panel.NextButton("Ajouter 1", () => { multiple = false; panel.SelectTab(); });
                 panel.NextButton("Quantité...", () => { multiple = true; panel.SelectTab(); });
             }
-            panel.PreviousButton("Panier");
+            panel.PreviousButton();
             panel.CloseButton();
             panel.Display();
         }
@@ -254,7 +254,7 @@ namespace Boulangerie
 
             if (formulas.Count > 0)
                 panel.NextButton("Ajouter", () => panel.SelectTab());
-            panel.PreviousButton("Panier");
+            panel.PreviousButton();
             panel.CloseButton();
             panel.Display();
         }
@@ -325,7 +325,7 @@ namespace Boulangerie
             if (hasPoint)
                 panel.NextButton(Color("Au point Carte", Colors.Success), () => { toPoint = true; panel.SelectTab(); });
             panel.NextButton(hasPoint ? "Addition directe" : "Envoyer l'addition", () => { toPoint = false; panel.SelectTab(); });
-            panel.PreviousButton("Panier");
+            panel.PreviousButton();
             panel.CloseButton();
             panel.Display();
         }
@@ -640,7 +640,10 @@ namespace Boulangerie
         }
 
         /// <summary>Menu staff : choisir un modèle de caisse et la placer à sa position.</summary>
-        public async void CreateOrGenerate(Player player)
+        public void CreateOrGenerate(Player player) => CreateOrGenerate(player, false);
+
+        /// <param name="fromPluginMenu">Vrai si ouvert depuis la configuration (Retour = menu précédent), faux depuis AAMenu.</param>
+        public async void CreateOrGenerate(Player player, bool fromPluginMenu)
         {
             if (!BoulangeriePlugin.IsStaff(player))
             {
@@ -649,7 +652,7 @@ namespace Boulangerie
             }
 
             List<CashRegister> patterns = await QueryAll();
-            Panel panel = Context.PanelHelper.Create(BoulangeriePlugin.Brand("Caisses - Placer une caisse"), UIPanel.PanelType.Tab, player, () => CreateOrGenerate(player));
+            Panel panel = Context.PanelHelper.Create(BoulangeriePlugin.Brand("Caisses - Placer une caisse"), UIPanel.PanelType.Tab, player, () => CreateOrGenerate(player, fromPluginMenu));
 
             if (patterns.Count == 0)
                 panel.AddTabLine("Aucun modèle, créez-en un", _ => panel.Refresh());
@@ -672,6 +675,7 @@ namespace Boulangerie
             panel.NextButton("Nouveau modèle", () => SetPatternData(player));
             panel.NextButton("Modèles", async () => await GetPatternData(player, true));
             panel.NextButton("Points", async () => await GetNPoints(player));
+            BoulangeriePlugin.BackButton(panel, fromPluginMenu, m => m.AdminPointsPanel(player));
             panel.CloseButton();
             panel.Display();
         }

@@ -92,7 +92,7 @@ namespace Boulangerie
                 player.ClosePanel(panel);
                 NewProductPrice(player, product);
             });
-            panel.PreviousButton("Annuler");
+            panel.PreviousButton();
             panel.CloseButton();
             panel.Display();
         }
@@ -121,7 +121,7 @@ namespace Boulangerie
                     current.Previous();
                 });
             });
-            panel.PreviousButton("Annuler");
+            panel.PreviousButton();
             panel.CloseButton();
             panel.Display();
         }
@@ -366,7 +366,7 @@ namespace Boulangerie
                 player.ClosePanel(panel);
                 NewFormulaPrice(player, formula);
             });
-            panel.PreviousButton("Annuler");
+            panel.PreviousButton();
             panel.CloseButton();
             panel.Display();
         }
@@ -387,7 +387,7 @@ namespace Boulangerie
                 player.ClosePanel(panel);
                 FormulaContent(player, formula, NewFormulaTitle, true);
             });
-            panel.PreviousButton("Annuler");
+            panel.PreviousButton();
             panel.CloseButton();
             panel.Display();
         }
@@ -448,11 +448,11 @@ namespace Boulangerie
                     player.Notify(Tag, $"Formule « {formula.Name} » créée à {Money(formula.Price)}.", NotificationManager.Type.Success, 5f);
                     return true;
                 });
-                panel.PreviousButton("Annuler");
+                panel.PreviousButton();
             }
             else
             {
-                panel.PreviousButton("Terminer");
+                panel.PreviousButton();
             }
             panel.CloseButton();
             panel.Display();
