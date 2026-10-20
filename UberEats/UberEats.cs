@@ -382,7 +382,15 @@ namespace UberEats
         {
             int characterId = player.character.Id;
             UECourier courier = (await UECourier.Query(c => c.CharacterId == characterId)).FirstOrDefault();
-            if (courier != null) return courier;
+            if (courier != null)
+            {
+                if (courier.Transport != "Voiture" && courier.Transport != "À pied")
+                {
+                    courier.Transport = "À pied";
+                    await courier.Save();
+                }
+                return courier;
+            }
 
             courier = new UECourier { CharacterId = characterId, Name = player.FullName };
             await courier.Save(); // InsertAsync renseigne l'Id

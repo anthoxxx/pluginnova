@@ -174,7 +174,7 @@ namespace UberEats
 
         public int CharacterId { get; set; }
         public string Name { get; set; }
-        public string Transport { get; set; } = "Vélo";
+        public string Transport { get; set; } = "À pied";
         public int Deliveries { get; set; }
         public double Earnings { get; set; }
         public double Tips { get; set; }

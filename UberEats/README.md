@@ -41,7 +41,7 @@ Client commande et paie ──► Restaurant accepte / prépare ──► Livreu
   **Noter** le restaurant et le livreur (1 à 5) et laisser un **pourboire**.
 
 ### Livreur indépendant
-- **Prendre mon service** en choisissant son transport (vélo, scooter, voiture…). Les livreurs en
+- **Prendre mon service** en choisissant son transport (voiture ou à pied). Les livreurs en
   service reçoivent une notification à chaque nouvelle course.
 - **Courses disponibles** : restaurant, distances, rémunération, état (en cuisine / prête).
 - **Accepter la course** → point GPS sur le restaurant. En arrivant, le sac est récupéré

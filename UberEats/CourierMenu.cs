@@ -13,7 +13,7 @@ namespace UberEats
     /// <summary>Côté livreur indépendant : prendre son service, accepter des courses, récupérer et livrer.</summary>
     public partial class UberEatsPlugin
     {
-        private static readonly string[] Transports = { "Vélo", "Trottinette", "Scooter", "Moto", "Voiture", "À pied" };
+        private static readonly string[] Transports = { "Voiture", "À pied" };
 
         private async Task<UEOrder> GetCurrentJob(int characterId)
         {
