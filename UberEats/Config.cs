@@ -42,10 +42,7 @@ namespace UberEats
 
         /// <summary>L'Espace restaurateur est réservé aux employés d'une entreprise autorisée (le restaurant appartient à l'entreprise).</summary>
         public bool RestaurantRequiresJob { get; set; } = true;
-        /// <summary>Activités d'entreprise donnant accès à l'Espace restaurateur (noms de Life.BizSystem.Activity.Type).</summary>
-        [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
-        public List<string> AllowedActivities { get; set; } = new List<string> { "Chef" };
-        /// <summary>Entreprises autorisées en plus des activités ci-dessus (Id d'entreprise).</summary>
+        /// <summary>Entreprises autorisées (Id d'entreprise), choisies par le staff.</summary>
         [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
         public List<int> AllowedBizIds { get; set; } = new List<int>();
 

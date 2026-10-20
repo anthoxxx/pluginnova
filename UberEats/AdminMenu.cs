@@ -4,7 +4,6 @@ using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
 using Life;
-using Life.BizSystem;
 using Life.DB;
 using Life.Network;
 using Life.UI;
@@ -110,7 +109,6 @@ namespace UberEats
                 Config.Save();
                 panel.Refresh();
             });
-            panel.AddTabLine($"Activités autorisées : {Color(Config.AllowedActivities.Count.ToString(), Colors.Info)}", _ => AdminJobActivities(player));
             panel.AddTabLine($"Entreprises autorisées : {Color(Config.AllowedBizIds.Count.ToString(), Colors.Info)}", _ => AdminJobBizs(player));
             panel.NextButton("Sélectionner", () => panel.SelectTab());
             panel.PreviousButton();
@@ -118,30 +116,7 @@ namespace UberEats
             panel.Display();
         }
 
-        /// <summary>Toute entreprise ayant une de ces activités accède à l'Espace restaurateur.</summary>
-        private void AdminJobActivities(Player player)
-        {
-            Panel panel = PanelHelper.Create($"{AppName} - Activités autorisées", UIPanel.PanelType.Tab, player, () => AdminJobActivities(player));
-            foreach (Activity.Type type in Enum.GetValues(typeof(Activity.Type)))
-            {
-                if (type == Activity.Type.None) continue;
-                string name = type.ToString();
-                bool allowed = Config.AllowedActivities.Contains(name);
-                panel.AddTabLine($"{name} : " + (allowed ? Color("autorisée", Colors.Success) : Color("non", Colors.Grey)), _ =>
-                {
-                    if (allowed) Config.AllowedActivities.Remove(name);
-                    else Config.AllowedActivities.Add(name);
-                    Config.Save();
-                    panel.Refresh();
-                });
-            }
-            panel.AddButton("Basculer", _ => panel.SelectTab());
-            panel.PreviousButton();
-            panel.CloseButton();
-            panel.Display();
-        }
-
-        /// <summary>Autorise une entreprise précise, quelle que soit son activité.</summary>
+        /// <summary>Entreprises dont le patron et les employés accèdent à l'Espace restaurateur.</summary>
         private void AdminJobBizs(Player player)
         {
             Panel panel = PanelHelper.Create($"{AppName} - Entreprises autorisées", UIPanel.PanelType.Tab, player, () => AdminJobBizs(player));

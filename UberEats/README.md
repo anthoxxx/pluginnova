@@ -63,8 +63,9 @@ Client commande et paie ──► Restaurant accepte / prépare ──► Livreu
 - **Classement des livreurs** (top 10) visible par tous.
 
 ### Restaurateur partenaire (métier)
-- Accès réservé au **patron et aux employés** d'une entreprise autorisée : par **activité** (par
-  défaut `Chef`) ou par **entreprise** choisie par le staff. Les autres joueurs voient la ligne grisée.
+- Accès réservé au **patron et aux employés** des **entreprises choisies par le staff**
+  (Administration → Plugins → Uber Eats → Métier restaurateur → Entreprises autorisées).
+  Les autres joueurs voient la ligne grisée.
 - Le restaurant **appartient à l'entreprise** : n'importe quel membre (patron ou employé) peut
   l'inscrire (payé par le compte de l'entreprise), le gérer ou le fermer ; tous reçoivent les
   notifications ; les recettes vont sur le **compte de l'entreprise**.
@@ -109,7 +110,7 @@ Chaque étape et chaque modification prévient les personnes concernées, à l'�
 ### Staff (AAMenu → Administration → Plugins → Uber Eats)
 - Réglages : commission, frais de livraison (base, par 100 m, max), commande minimum, prix
   d'inscription, commandes simultanées, distances de retrait/remise, délais d'annulation auto.
-- Métier restaurateur : activer / désactiver le verrou, activités et entreprises autorisées.
+- Métier restaurateur : activer / désactiver le verrou, entreprises autorisées.
 - Points de livraison aléatoires et paie des courses aléatoires (voir plus haut).
 - Restaurants : suspendre / lever la suspension, supprimer.
 - Commandes en cours : annuler et rembourser (litiges), livreurs en service, classement.

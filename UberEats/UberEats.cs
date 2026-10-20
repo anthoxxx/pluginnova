@@ -141,9 +141,7 @@ namespace UberEats
             if (!Config.RestaurantRequiresJob) return true;
             if (player == null || !player.HasBiz) return false;
 
-            int bizId = player.character.BizId;
-            if (Config.AllowedBizIds.Contains(bizId)) return true;
-            return Nova.biz.GetBizActivities(bizId).Any(a => Config.AllowedActivities.Contains(a.ToString()));
+            return Config.AllowedBizIds.Contains(player.character.BizId);
         }
 
         /// <summary>Peut gérer ce restaurant : un employé de l'entreprise propriétaire, ou le créateur d'un restaurant personnel.</summary>
