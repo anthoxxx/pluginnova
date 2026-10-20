@@ -4,6 +4,8 @@ using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
 using Life;
+using Life.BizSystem;
+using Life.DB;
 using Life.Network;
 using Life.UI;
 using ModKit.Helper;
@@ -24,6 +26,8 @@ namespace UberEats
 
             Panel panel = PanelHelper.Create($"{AppName} - Administration", UIPanel.PanelType.Tab, player, () => AdminMenu(player));
             panel.AddTabLine("Réglages de la plateforme", _ => AdminSettings(player));
+            panel.AddTabLine("Métier restaurateur (accès à l'Espace restaurateur)", _ => AdminJob(player));
+            panel.AddTabLine("Points de farm", _ => new FarmPattern(false) { Context = this }.CreateOrGenerate(player));
             panel.AddTabLine($"Restaurants ({restaurants})", _ => AdminRestaurants(player));
             panel.AddTabLine($"Commandes en cours ({activeOrders})", _ => AdminOrders(player));
             panel.AddTabLine($"Livreurs en service ({_onDuty.Count(id => FindPlayer(id) != null)})", _ => AdminCouriers(player));
@@ -88,6 +92,76 @@ namespace UberEats
         }
 
         // ------------------------------------------------------------------
+        //  Métier restaurateur
+        // ------------------------------------------------------------------
+
+        private void AdminJob(Player player)
+        {
+            Panel panel = PanelHelper.Create($"{AppName} - Métier restaurateur", UIPanel.PanelType.Tab, player, () => AdminJob(player));
+            panel.AddTabLine("Réserver l'Espace restaurateur au métier : " + (Config.RestaurantRequiresJob ? Color("oui", Colors.Success) : Color("non (tout le monde)", Colors.Warning)), _ =>
+            {
+                Config.RestaurantRequiresJob = !Config.RestaurantRequiresJob;
+                Config.Save();
+                panel.Refresh();
+            });
+            panel.AddTabLine($"Activités autorisées : {Color(Config.AllowedActivities.Count == 0 ? "aucune" : string.Join(", ", Config.AllowedActivities), Colors.Info)}", _ => AdminJobActivities(player));
+            panel.AddTabLine($"Entreprises autorisées : {Color(Config.AllowedBizIds.Count.ToString(), Colors.Info)}", _ => AdminJobBizs(player));
+            panel.NextButton("Sélectionner", () => panel.SelectTab());
+            panel.PreviousButton();
+            panel.CloseButton();
+            panel.Display();
+        }
+
+        /// <summary>Toute entreprise ayant une de ces activités accède à l'Espace restaurateur.</summary>
+        private void AdminJobActivities(Player player)
+        {
+            Panel panel = PanelHelper.Create($"{AppName} - Activités autorisées", UIPanel.PanelType.Tab, player, () => AdminJobActivities(player));
+            foreach (Activity.Type type in Enum.GetValues(typeof(Activity.Type)))
+            {
+                if (type == Activity.Type.None) continue;
+                string name = type.ToString();
+                bool allowed = Config.AllowedActivities.Contains(name);
+                panel.AddTabLine($"{name} : " + (allowed ? Color("autorisée", Colors.Success) : Color("non", Colors.Grey)), _ =>
+                {
+                    if (allowed) Config.AllowedActivities.Remove(name);
+                    else Config.AllowedActivities.Add(name);
+                    Config.Save();
+                    panel.Refresh();
+                });
+            }
+            panel.AddButton("Basculer", _ => panel.SelectTab());
+            panel.PreviousButton();
+            panel.CloseButton();
+            panel.Display();
+        }
+
+        /// <summary>Autorise une entreprise précise, quelle que soit son activité.</summary>
+        private void AdminJobBizs(Player player)
+        {
+            Panel panel = PanelHelper.Create($"{AppName} - Entreprises autorisées", UIPanel.PanelType.Tab, player, () => AdminJobBizs(player));
+            List<Bizs> bizs = Nova.biz.bizs.Where(b => b != null).OrderBy(b => b.BizName).ToList();
+            if (bizs.Count == 0)
+                panel.AddTabLine(Color("Aucune entreprise", Colors.Grey), _ => { });
+
+            foreach (Bizs biz in bizs)
+            {
+                int bizId = biz.Id;
+                bool allowed = Config.AllowedBizIds.Contains(bizId);
+                panel.AddTabLine($"[{bizId}] {biz.BizName} : " + (allowed ? Color("autorisée", Colors.Success) : Color("non", Colors.Grey)), _ =>
+                {
+                    if (allowed) Config.AllowedBizIds.Remove(bizId);
+                    else Config.AllowedBizIds.Add(bizId);
+                    Config.Save();
+                    panel.Refresh();
+                });
+            }
+            if (bizs.Count > 0) panel.AddButton("Basculer", _ => panel.SelectTab());
+            panel.PreviousButton();
+            panel.CloseButton();
+            panel.Display();
+        }
+
+        // ------------------------------------------------------------------
         //  Restaurants
         // ------------------------------------------------------------------
 
@@ -117,7 +191,9 @@ namespace UberEats
             if (restaurant == null) return;
 
             Panel panel = PanelHelper.Create($"Restaurant [{restaurant.Id}]", UIPanel.PanelType.Text, player, () => AdminRestaurant(player, restaurantId));
-            panel.TextLines.Add($"{Bold(restaurant.Name)} ({restaurant.Category}) - gérant : {restaurant.OwnerName}");
+            panel.TextLines.Add($"{Bold(restaurant.Name)} ({restaurant.Category}) - créé par : {restaurant.OwnerName}");
+            if (restaurant.BizId != 0)
+                panel.TextLines.Add($"Entreprise : {Nova.biz.FetchBiz(restaurant.BizId)?.BizName ?? $"#{restaurant.BizId} (introuvable)"}");
             panel.TextLines.Add($"{restaurant.OrdersCount} commande(s) livrée(s) - CA net {FormatMoney(restaurant.Revenue)} - {FormatRating(restaurant.Rating, restaurant.RatingCount)}");
             panel.TextLines.Add($"Point de retrait à {Mathf.RoundToInt(Vector3.Distance(PositionOf(player), restaurant.Position))} m de vous");
 
@@ -126,7 +202,7 @@ namespace UberEats
                 restaurant.IsSuspended = !restaurant.IsSuspended;
                 if (restaurant.IsSuspended) restaurant.IsOpen = false;
                 await restaurant.Save();
-                FindPlayer(restaurant.OwnerCharacterId)?.Notify(AppName, restaurant.IsSuspended
+                NotifyRestaurant(restaurant, restaurant.IsSuspended
                     ? "Votre restaurant a été suspendu par le staff."
                     : "La suspension de votre restaurant a été levée.", NotificationManager.Type.Warning, 8f);
                 panel.Refresh();

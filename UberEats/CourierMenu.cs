@@ -206,7 +206,7 @@ namespace UberEats
             SetGps(player, restaurant.Position, async p => await TryPickup(p, orderId));
             player.Notify(AppName, $"Course acceptée ! Rendez-vous chez {restaurant.Name} (point sur votre carte).", NotificationManager.Type.Success, 6f);
             FindPlayer(order.ClientCharacterId)?.Notify(AppName, $"{player.FullName} ({profile.Transport}) va livrer votre commande #{order.Id}.", NotificationManager.Type.Info, 6f);
-            FindPlayer(restaurant.OwnerCharacterId)?.Notify(AppName, $"Le livreur {player.FullName} arrive pour la commande #{order.Id}.", NotificationManager.Type.Info, 6f);
+            NotifyRestaurant(restaurant, $"Le livreur {player.FullName} arrive pour la commande #{order.Id}.", NotificationManager.Type.Info, 6f);
             return true;
         }
 

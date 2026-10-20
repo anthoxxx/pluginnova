@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using ModKit.Internal;
 using Newtonsoft.Json;
@@ -27,6 +28,15 @@ namespace UberEats
         public int PendingTimeoutMinutes { get; set; } = 15;
         /// <summary>Une commande prête que personne ne récupère est annulée et remboursée après ce délai (minutes).</summary>
         public int NoCourierTimeoutMinutes { get; set; } = 45;
+
+        /// <summary>L'Espace restaurateur est réservé aux employés d'une entreprise autorisée (le restaurant appartient à l'entreprise).</summary>
+        public bool RestaurantRequiresJob { get; set; } = true;
+        /// <summary>Activités d'entreprise donnant accès à l'Espace restaurateur (noms de Life.BizSystem.Activity.Type).</summary>
+        [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
+        public List<string> AllowedActivities { get; set; } = new List<string> { "Chef" };
+        /// <summary>Entreprises autorisées en plus des activités ci-dessus (Id d'entreprise).</summary>
+        [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
+        public List<int> AllowedBizIds { get; set; } = new List<int>();
 
         [JsonIgnore]
         public static string FilePath { get; set; }

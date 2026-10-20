@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Life;
+using Life.DB;
 using Life.Network;
 using Life.UI;
 using ModKit.Helper;
@@ -20,24 +21,57 @@ namespace UberEats
             "Boulangerie", "Café", "Desserts", "Healthy", "Boissons", "Épicerie"
         };
 
-        private static async Task<UERestaurant> GetOwnRestaurant(int characterId)
+        /// <summary>
+        /// Restaurant géré par le joueur : celui de son entreprise quand le verrou métier est actif,
+        /// sinon son restaurant personnel.
+        /// </summary>
+        private async Task<UERestaurant> GetOwnRestaurant(Player player)
         {
-            return (await UERestaurant.Query(r => r.OwnerCharacterId == characterId)).FirstOrDefault();
+            if (Config.RestaurantRequiresJob)
+            {
+                if (!player.HasBiz) return null;
+                int bizId = player.character.BizId;
+                return (await UERestaurant.Query(r => r.BizId == bizId)).FirstOrDefault();
+            }
+            int characterId = player.character.Id;
+            return (await UERestaurant.Query(r => r.OwnerCharacterId == characterId && r.BizId == 0)).FirstOrDefault();
+        }
+
+        /// <summary>Avec le verrou métier, seul le patron de l'entreprise crée ou ferme le restaurant.</summary>
+        private bool IsRestaurantBoss(Player player)
+        {
+            return !Config.RestaurantRequiresJob || (player.HasBiz && player.biz != null && player.biz.OwnerId == player.character.Id);
         }
 
         private async void RestaurantSpace(Player player)
         {
-            UERestaurant restaurant = await GetOwnRestaurant(player.character.Id);
+            if (!IsRestaurateur(player))
+            {
+                player.Notify(AppName, "L'Espace restaurateur est réservé aux employés d'un restaurant partenaire.", NotificationManager.Type.Warning, 6f);
+                return;
+            }
+
+            UERestaurant restaurant = await GetOwnRestaurant(player);
             if (restaurant == null)
             {
+                bool boss = IsRestaurantBoss(player);
                 Panel intro = PanelHelper.Create("Devenir partenaire", UIPanel.PanelType.Text, player, () => RestaurantSpace(player));
-                intro.TextLines.Add($"Ouvrez votre restaurant sur {Color(AppName, BrandColor)} !");
+                intro.TextLines.Add(Config.RestaurantRequiresJob
+                    ? $"Inscrivez {Bold(player.biz?.BizName ?? "votre entreprise")} sur {Color(AppName, BrandColor)} !"
+                    : $"Ouvrez votre restaurant sur {Color(AppName, BrandColor)} !");
                 intro.TextLines.Add("Déposez vos plats en stock, fixez vos prix : les clients commandent,");
                 intro.TextLines.Add("les livreurs indépendants s'occupent du reste.");
                 intro.TextLines.Add("");
-                intro.TextLines.Add($"Inscription : {Bold(FormatMoney(Config.RestaurantCreationCost))} - commission : {Config.CommissionPercent}% par commande");
+                intro.TextLines.Add($"Inscription : {Bold(FormatMoney(Config.RestaurantCreationCost))}"
+                                    + (Config.RestaurantRequiresJob ? " (payée par l'entreprise)" : "")
+                                    + $" - commission : {Config.CommissionPercent}% par commande");
+                if (Config.RestaurantRequiresJob)
+                    intro.TextLines.Add(Color("Recettes versées sur le compte de l'entreprise, tous les employés gèrent le restaurant.", Colors.Grey));
                 intro.TextLines.Add(Color("Le point de retrait des commandes sera placé à votre position.", Colors.Grey));
-                intro.NextButton(Color("Ouvrir mon restaurant", Colors.Success), () => CreateRestaurant(player));
+                if (boss)
+                    intro.NextButton(Color("Ouvrir mon restaurant", Colors.Success), () => CreateRestaurant(player));
+                else
+                    intro.TextLines.Add(Color("Seul le patron de l'entreprise peut inscrire le restaurant.", Colors.Warning));
                 intro.PreviousButton();
                 intro.CloseButton();
                 intro.Display();
@@ -113,16 +147,29 @@ namespace UberEats
         private async Task<bool> ConfirmCreateRestaurant(Player player, string name, string category)
         {
             int characterId = player.character.Id;
-            if (await GetOwnRestaurant(characterId) != null)
+            if (!IsRestaurateur(player) || !IsRestaurantBoss(player)) return true;
+            if (await GetOwnRestaurant(player) != null)
             {
                 player.Notify(AppName, "Vous avez déjà un restaurant.", NotificationManager.Type.Error, 5f);
                 return true;
             }
-            if (!Charge(player, Config.RestaurantCreationCost, $"{AppName} - inscription restaurant")) return true;
+
+            Bizs biz = Config.RestaurantRequiresJob ? player.biz : null;
+            if (biz != null)
+            {
+                if (biz.Bank < Config.RestaurantCreationCost)
+                {
+                    player.Notify(AppName, $"Le compte de l'entreprise doit contenir {FormatMoney(Config.RestaurantCreationCost)}.", NotificationManager.Type.Error, 6f);
+                    return true;
+                }
+                biz.AddBankMoney(-Config.RestaurantCreationCost, $"{AppName} - inscription restaurant");
+            }
+            else if (!Charge(player, Config.RestaurantCreationCost, $"{AppName} - inscription restaurant")) return true;
 
             UERestaurant restaurant = new UERestaurant
             {
                 OwnerCharacterId = characterId,
+                BizId = biz?.Id ?? 0,
                 OwnerName = player.FullName,
                 Name = name,
                 Category = category,
@@ -131,7 +178,8 @@ namespace UberEats
             };
             if (!await restaurant.Save())
             {
-                await Pay(characterId, Config.RestaurantCreationCost, $"Remboursement inscription {AppName}");
+                if (biz != null) biz.AddBankMoney(Config.RestaurantCreationCost, $"Remboursement inscription {AppName}");
+                else await Pay(characterId, Config.RestaurantCreationCost, $"Remboursement inscription {AppName}");
                 return true;
             }
 
@@ -203,7 +251,7 @@ namespace UberEats
             UEOrder order = await UEOrder.Query(orderId);
             if (order == null || order.Status >= (int)newState || !order.IsCancellable) return false;
             UERestaurant restaurant = await UERestaurant.Query(order.RestaurantId);
-            if (restaurant == null || restaurant.OwnerCharacterId != player.character.Id) return false;
+            if (restaurant == null || !CanManage(player, restaurant)) return false;
 
             bool wasPending = order.State == OrderStatus.Pending;
             order.State = newState;
@@ -482,7 +530,8 @@ namespace UberEats
                 player.Notify(AppName, "Point de retrait déplacé à votre position.", NotificationManager.Type.Success, 5f);
                 panel.Refresh();
             });
-            panel.AddTabLine(Color("Fermer définitivement le restaurant", Colors.Error), _ => ConfirmDeleteRestaurant(player, restaurantId));
+            if (IsRestaurantBoss(player))
+                panel.AddTabLine(Color("Fermer définitivement le restaurant", Colors.Error), _ => ConfirmDeleteRestaurant(player, restaurantId));
 
             panel.NextButton("Sélectionner", () => panel.SelectTab());
             panel.PreviousButton();

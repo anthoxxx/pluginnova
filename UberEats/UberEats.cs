@@ -60,6 +60,11 @@ namespace UberEats
             Orm.RegisterTable<UEOrder>();
             Orm.RegisterTable<UECourier>();
             Orm.RegisterTable<UEPendingPayment>();
+            Orm.RegisterTable<FarmPattern>();
+
+            // Points de farm : déclenchés par le PointHelper, placés depuis AAMenu (Administration > Points bleus)
+            FarmPattern farmPattern = new FarmPattern(false);
+            PointHelper.AddPattern(nameof(FarmPattern), farmPattern);
 
             if (AAMenu.AAMenu.menu != null)
             {
@@ -67,6 +72,7 @@ namespace UberEats
                     MainMenu(PanelHelper.ReturnPlayerFromPanel(ui)));
                 AAMenu.Menu.AddAdminPluginTabLine(PluginInformations, 1, AppName, ui =>
                     AdminMenu(PanelHelper.ReturnPlayerFromPanel(ui)));
+                AAMenu.AAMenu.menu.AddBuilder(PluginInformations, "Farm Uber Eats", farmPattern, this);
             }
             else
             {
@@ -81,6 +87,7 @@ namespace UberEats
         public override async void OnPlayerSpawnCharacter(Player player, NetworkConnection conn, Characters character)
         {
             base.OnPlayerSpawnCharacter(player, conn, character);
+            PointHelper.InitAllNPoint(player);
             await PayPendingPayments(player);
         }
 
@@ -130,6 +137,52 @@ namespace UberEats
             return true;
         }
 
+        // ------------------------------------------------------------------
+        //  Métier restaurateur
+        // ------------------------------------------------------------------
+
+        /// <summary>Le joueur a-t-il accès à l'Espace restaurateur (métier autorisé, ou verrou désactivé) ?</summary>
+        public bool IsRestaurateur(Player player)
+        {
+            if (!Config.RestaurantRequiresJob) return true;
+            if (player == null || !player.HasBiz) return false;
+
+            int bizId = player.character.BizId;
+            if (Config.AllowedBizIds.Contains(bizId)) return true;
+            return Nova.biz.GetBizActivities(bizId).Any(a => Config.AllowedActivities.Contains(a.ToString()));
+        }
+
+        /// <summary>Peut gérer ce restaurant : un employé de l'entreprise propriétaire, ou le créateur d'un restaurant personnel.</summary>
+        public bool CanManage(Player player, UERestaurant restaurant)
+        {
+            if (restaurant.BizId != 0)
+                return player.HasBiz && player.character.BizId == restaurant.BizId && IsRestaurateur(player);
+            return restaurant.OwnerCharacterId == player.character.Id;
+        }
+
+        /// <summary>Prévient le personnel du restaurant en ville (toute l'entreprise, ou le créateur).</summary>
+        public void NotifyRestaurant(UERestaurant restaurant, string message, NotificationManager.Type type, float duration)
+        {
+            IEnumerable<Player> staff = restaurant.BizId != 0
+                ? Nova.server.Players.Where(p => p != null && p.isSpawned && p.character != null && p.character.BizId == restaurant.BizId)
+                : new[] { FindPlayer(restaurant.OwnerCharacterId) };
+            foreach (Player player in staff.Where(p => p != null))
+                player.Notify($"{AppName} - {restaurant.Name}", message, type, duration);
+        }
+
+        /// <summary>Les recettes vont dans le compte de l'entreprise (ou au créateur d'un restaurant personnel).</summary>
+        private async Task PayRestaurant(UERestaurant restaurant, double amount, string reason)
+        {
+            Bizs biz = restaurant.BizId != 0 ? Nova.biz.FetchBiz(restaurant.BizId) : null;
+            if (biz == null)
+            {
+                await Pay(restaurant.OwnerCharacterId, amount, reason);
+                return;
+            }
+            biz.AddBankMoney(Math.Round(amount, 2), reason);
+            NotifyRestaurant(restaurant, $"{Color("+" + FormatMoney(amount), Colors.Success)} sur le compte de l'entreprise ({reason})", NotificationManager.Type.Success, 6f);
+        }
+
         public double ComputeDeliveryFee(Vector3 from, Vector3 to)
         {
             double fee = Config.BaseDeliveryFee + Config.FeePer100m * (Vector3.Distance(from, to) / 100f);
@@ -173,7 +226,7 @@ namespace UberEats
 
             UERestaurant restaurant = await UERestaurant.Query(order.RestaurantId);
             if (restaurant != null)
-                FindPlayer(restaurant.OwnerCharacterId)?.Notify(AppName, $"Commande #{order.Id} annulée : {reason}", NotificationManager.Type.Warning, 6f);
+                NotifyRestaurant(restaurant, $"Commande #{order.Id} annulée : {reason}", NotificationManager.Type.Warning, 6f);
 
             return true;
         }
@@ -196,7 +249,7 @@ namespace UberEats
             if (order.State != OrderStatus.Ready)
             {
                 courier.Notify(AppName, "La commande est encore en cuisine, patientez quelques instants.", NotificationManager.Type.Info, 5f);
-                FindPlayer(restaurant.OwnerCharacterId)?.Notify(AppName, $"Le livreur {courier.FullName} attend la commande #{order.Id} !", NotificationManager.Type.Warning, 8f);
+                NotifyRestaurant(restaurant, $"Le livreur {courier.FullName} attend la commande #{order.Id} !", NotificationManager.Type.Warning, 8f);
                 return false;
             }
 
@@ -208,7 +261,7 @@ namespace UberEats
             restaurant.OrdersCount++;
             restaurant.Revenue += payout;
             await restaurant.Save();
-            await Pay(restaurant.OwnerCharacterId, payout, $"Commande #{order.Id} ({restaurant.Name})");
+            await PayRestaurant(restaurant, payout, $"{AppName} - commande #{order.Id}");
 
             courier.Notify(AppName, $"Sac récupéré ! Direction le client {order.ClientName}.", NotificationManager.Type.Success, 6f);
             FindPlayer(order.ClientCharacterId)?.Notify(AppName, $"{order.CourierName} a récupéré votre commande, il arrive !", NotificationManager.Type.Info, 8f);

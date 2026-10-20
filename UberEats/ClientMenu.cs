@@ -27,7 +27,14 @@ namespace UberEats
             panel.AddTabLine("Mon panier" + (cartCount > 0 ? Color($" ({cartCount} article(s))", Colors.Info) : ""), _ => CartMenu(player));
             panel.AddTabLine("Mes commandes" + (activeOrders > 0 ? Color($" ({activeOrders} en cours)", Colors.Warning) : ""), _ => ClientOrders(player));
             panel.AddTabLine("Espace livreur" + (_onDuty.Contains(characterId) ? Color(" (en service)", Colors.Success) : ""), _ => CourierMenu(player));
-            panel.AddTabLine("Espace restaurateur", _ => RestaurantSpace(player));
+            if (IsRestaurateur(player))
+                panel.AddTabLine("Espace restaurateur", _ => RestaurantSpace(player));
+            else
+                panel.AddTabLine(Color("Espace restaurateur (réservé au métier)", Colors.Grey), _ =>
+                {
+                    player.Notify(AppName, "Réservé aux employés d'un restaurant partenaire.", NotificationManager.Type.Warning, 5f);
+                    MainMenu(player);
+                });
             panel.AddTabLine("Classement des livreurs", _ => Leaderboard(player));
             panel.NextButton("Sélectionner", () => panel.SelectTab());
             panel.PreviousButton();
@@ -251,7 +258,7 @@ namespace UberEats
                 player.Notify(AppName, "Ce restaurant vient de fermer.", NotificationManager.Type.Error, 5f);
                 return false;
             }
-            if (restaurant.OwnerCharacterId == characterId)
+            if (CanManage(player, restaurant))
             {
                 player.Notify(AppName, "Vous ne pouvez pas commander dans votre propre restaurant.", NotificationManager.Type.Error, 5f);
                 return false;
@@ -327,15 +334,14 @@ namespace UberEats
             _carts.Remove(characterId);
             player.Notify(AppName, $"Commande #{order.Id} payée ! Suivez-la dans « Mes commandes ».", NotificationManager.Type.Success, 6f);
 
-            Player owner = FindPlayer(restaurant.OwnerCharacterId);
             if (restaurant.AutoAccept)
             {
-                owner?.Notify(AppName, $"Commande #{order.Id} reçue et validée automatiquement.", NotificationManager.Type.Info, 6f);
+                NotifyRestaurant(restaurant, $"Commande #{order.Id} reçue et validée automatiquement.", NotificationManager.Type.Info, 6f);
                 AlertCouriers(order, restaurant);
             }
             else
             {
-                owner?.Notify(AppName, $"Nouvelle commande #{order.Id} de {order.ClientName} ! Acceptez-la dans l'Espace restaurateur.", NotificationManager.Type.Warning, 10f);
+                NotifyRestaurant(restaurant, $"Nouvelle commande #{order.Id} de {order.ClientName} ! Acceptez-la dans l'Espace restaurateur.", NotificationManager.Type.Warning, 10f);
             }
             return true;
         }
