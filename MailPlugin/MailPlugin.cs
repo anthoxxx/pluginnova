@@ -11,7 +11,6 @@ using Mirror;
 using ModKit.Helper;
 using ModKit.Interfaces;
 using ModKit.Internal;
-using ModKit.Utils;
 using Newtonsoft.Json;
 
 namespace MailPlugin
