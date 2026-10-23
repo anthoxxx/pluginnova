@@ -1,0 +1,10 @@
+{
+  "port": 8080,
+  "publicUrl": "http://127.0.0.1:8080",
+  "city": "Amboise",
+  "identifyByIp": true,
+  "devSteamId": "",
+  "sessionHours": 12,
+  "pinMaxFails": 3,
+  "pinLockSeconds": 30
+}

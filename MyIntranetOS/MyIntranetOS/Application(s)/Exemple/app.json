@@ -1,0 +1,8 @@
+{
+  "id": "exemple",
+  "name": "Exemple",
+  "icon": "🧩",
+  "color": "#ff6b35",
+  "entry": "index.html",
+  "dock": false
+}
