@@ -29,5 +29,5 @@ Dossier `Application(s)/<nom>/` avec `app.json` + `index.html`. `/api/me` est ac
 
 ## API Nova Life utilisée
 `Nova.server.OnMinutePassedEvent`, `OnPlayerSpawnCharacter`, `OnPlayerDisconnect`, `SChatCommand`,
-`player.steamId`, `player.FullName`, `player.character.Money`, `player.SendText`, `NetworkConnection.address` (Mirror).
-Si la compilation signale un de ces noms, c'est lui qu'il faut adapter à votre version du jeu.
+`player.steamId`, `player.FullName`, `player.character.Bank`, `player.SendText`, `NetworkConnectionToClient.address` (Mirror).
+Noms vérifiés sur les DLL du jeu (Nova-Life 1.69).

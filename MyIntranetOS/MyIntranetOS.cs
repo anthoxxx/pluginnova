@@ -24,8 +24,7 @@ using Life.DB;             // Characters
 using Life.Network;        // Player, SChatCommand
 using Mirror;              // NetworkConnection
 using ModKit.Helper;       // AssemblyHelper
-using ModKit.Interfaces;
-using ModKit.Internal;
+using ModKit.Interfaces;   // PluginInformations
 using Debug = UnityEngine.Debug;
 
 namespace MyIntranetOS
@@ -292,8 +291,8 @@ namespace MyIntranetOS
                 {
                     Player p = kv.Key;
                     string ip = null;
-                    try { if (kv.Value != null) ip = kv.Value.address; } catch { }
-                    var pi = new PInfo { Id = p.steamId.ToString(), Name = p.FullName, Money = p.character.Money, Ip = Clean(ip) };
+                    try { var cc = kv.Value as NetworkConnectionToClient; if (cc != null) ip = cc.address; } catch { }
+                    var pi = new PInfo { Id = p.steamId.ToString(), Name = p.FullName, Money = p.character.Bank, Ip = Clean(ip) };
                     list.Add(pi);
                     Store.Touch(pi.Id, pi.Name);
                 }
