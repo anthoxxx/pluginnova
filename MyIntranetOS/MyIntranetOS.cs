@@ -1,5 +1,6 @@
 // ============================================================================
 //  MyIntranet OS - Plugin Nova Life (tablette intranet reliée au jeu)
+//  By Matheo Mercier & Loris Strange
 //  - Serveur web autonome (HttpListener) : sert Web/ et Application(s)/
 //  - API : /api/me /api/apps /api/settings /api/pin/verify /api/pin/set
 //  - Sauvegarde JSON temps réel : Data/mios.json (écriture atomique + .bak)
@@ -33,7 +34,7 @@ namespace MyIntranetOS
     {
         public MyIntranetPlugin(IGameAPI api) : base(api)
         {
-            PluginInformations = new PluginInformations(AssemblyHelper.GetName(), "1.1.1", "matheo mercier");
+            PluginInformations = new PluginInformations(AssemblyHelper.GetName(), "1.1.1", "By Matheo Mercier & Loris Strange");
         }
 
         public override void OnPluginInit()
@@ -45,7 +46,7 @@ namespace MyIntranetOS
                 Nova.server.OnMinutePassedEvent += Bridge.Refresh;   // thread principal
                 HttpServer.Start();
                 RegisterCommand();
-                Log.Info("Initialisé - port " + Cfg.C.port + " - données : " + Paths.DataFile);
+                Log.Info("By Matheo Mercier & Loris Strange - Initialisé - port " + Cfg.C.port + " - données : " + Paths.DataFile);
                 if (!string.IsNullOrEmpty(Cfg.C.devSteamId))
                     Log.Err("devSteamId est défini : toute personne non identifiée sera vue comme " + Cfg.C.devSteamId + ". À vider en production !");
             }

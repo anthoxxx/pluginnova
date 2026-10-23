@@ -1,5 +1,7 @@
 # MyIntranet OS – plugin Nova Life + tablette web
 
+*By Matheo Mercier & Loris Strange*
+
 ## Compiler la DLL
 1. Copier les 6 DLL listées dans `libs/README.md` dans `libs/`.
 2. `dotnet build -c Release` → `bin/Release/net472/MyIntranetOS.dll` (+ le dossier `MyIntranetOS/` copié à côté).

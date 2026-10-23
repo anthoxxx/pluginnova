@@ -131,7 +131,7 @@ if(p=='home')return h('Écran d’accueil')+`<div class="grp">${APPS.map(a=>li(a
 if(p=='notif')return h('Notifications')+`<div class="grp">${li('Afficher les notifications',`<button class="p" data-n>${S.notif?'Activé':'Désactivé'}</button>`)}</div>`;
 if(p=='sec')return h('Code et sécurité')+`<div class="grp">${li('Code de verrouillage',`<button class="p" data-pin>${HP()?'Modifier':'Définir'}</button>`)}</div><p class="sub">Code à 4 chiffres, 3 erreurs = blocage 30 s.</p>`;
 if(p=='acc')return h('Compte')+`<div class="grp">${li('Nom',esc(ME.name))}${li('Statut',ME.role||'Joueur')}</div>`;
-return h('Informations')+`<div class="grp">${li('Version','1.1.1')}${li('Développeur','snoxi_dev')}</div><div class="grp">${li('Ville',esc(ME.city))}${li('Applications installées',APPS.length)}</div>`}
+return h('Informations')+`<div class="grp">${li('Version','1.1.1')}${li('Développeurs','By Matheo Mercier &amp; Loris Strange')}</div><div class="grp">${li('Ville',esc(ME.city))}${li('Applications installées',APPS.length)}</div>`}
 // Verrouillage
 let buf='',fails=0,until=0;const HP=()=>ME.hasPin!==undefined?ME.hasPin:!!S.pin;
 function lock(){buf='';$('#lock').classList.add('on');$('#lh').textContent=HP()?'Entrez votre code':'Cliquez pour déverrouiller';$('#pad').style.display='none';$('#dots').style.display='none'}
