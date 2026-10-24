@@ -16,8 +16,8 @@ de validation unique.
    message est envoyé sur **Discord** (webhook), avec toutes les réponses.
 4. **Examen** : le staff ouvre la candidature (AAMenu → Whitelist, ou `/wladmin`), lit les
    réponses, puis **Accepte** ou **Refuse** (avec une raison si besoin).
-5. **Code** : s'il est accepté, le joueur reçoit un **code de validation unique** (ex.
-   `WL-7F3K9Q`, différent pour chaque joueur). Il est dégelé et peut rejoindre le
+5. **Code** : s'il est accepté, le joueur reçoit un **code de validation à 4 chiffres**
+   (ex. `4821`). Deux joueurs qui n'ont pas encore saisi leur code n'ont jamais le même. Il est dégelé et peut rejoindre le
    **point bleu de validation**.
 6. **Validation** : le joueur saisit son code sur le point bleu → il est **téléporté** à la
    destination choisie par le staff pour ce point et devient whitelisté pour toujours
@@ -42,6 +42,7 @@ Ouvrir **AAMenu → Administration → Plugins → Whitelist** (ou `/wladmin`) :
 | **Questionnaire** | Ajouter / modifier / monter / descendre / supprimer des questions. Pour chaque question : intitulé, type (réponse libre ou choix multiple), choix proposés (séparés par `;`), obligatoire ou non, longueur minimale, texte d'aide. |
 | **Lieux d'attente** | « Ajouter ma position » pour créer un lieu où les joueurs non whitelistés sont bloqués. Plusieurs lieux possibles (choisi au hasard). |
 | **Points de saisie du code** | **Nouveau modèle** : votre position actuelle devient la destination des joueurs validés. Ensuite, allez près des lieux d'attente et faites **Placer ici** pour poser le point bleu. **Modèles** : renommer, « Destination ici », TP destination, supprimer. **Points** : TP, déplacer, supprimer. |
+| **Destination après le code (téléportation)** | Liste des points de validation et de leur destination. Allez à l'endroit voulu, sélectionnez le point puis **Ma position** : les joueurs qui valident leur code sur ce point y seront téléportés. **Se téléporter** pour vérifier. |
 | **Joueurs connectés** | Whitelister directement un joueur (sans code) ou révoquer sa whitelist. |
 | **Paramètres** | Tout le reste (voir ci-dessous). |
 
@@ -83,7 +84,8 @@ Modifiables en jeu (**Paramètres**) ou dans `Plugins/Whitelist.nova/config.json
 | `DiscordLogDecisions` | `true` | Logue aussi acceptations, refus, validations et révocations. |
 | `FormTitle` | `Candidature Whitelist` | Titre du questionnaire. |
 | `WelcomeText` / `EndText` / `AcceptedText` | … | Messages d'accueil, de fin et d'acceptation (`\n` = retour à la ligne). |
-| `CodePrefix` / `CodeLength` | `WL-` / `6` | Format du code de validation. |
+| `CodePrefix` / `CodeLength` | `""` / `4` | Préfixe et longueur du code de validation. |
+| `CodeDigitsOnly` | `true` | Code uniquement en chiffres (sinon lettres + chiffres). |
 | `MaxCodeAttempts` | `5` | Essais ratés avant 60 s de blocage. |
 | `FreezePlayers` | `true` | Gèle les joueurs en attente (dégelés une fois acceptés). |
 | `MaxDistance` | `30` | Distance max. (m) autour du lieu d'attente / du point de code. |

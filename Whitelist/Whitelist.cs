@@ -127,6 +127,14 @@ namespace WhitelistNova
                 Directory.CreateDirectory(Path.GetDirectoryName(configPath));
                 if (File.Exists(configPath))
                     Config = JsonConvert.DeserializeObject<WlConfig>(File.ReadAllText(configPath)) ?? new WlConfig();
+                if (Config.ConfigVersion < 2)
+                {
+                    // v2 : code de validation à 4 chiffres par défaut
+                    Config.CodePrefix = "";
+                    Config.CodeLength = 4;
+                    Config.CodeDigitsOnly = true;
+                    Config.ConfigVersion = 2;
+                }
                 SaveConfig();
             }
             catch (Exception e)
@@ -557,7 +565,7 @@ namespace WhitelistNova
 
             Panel panel = PanelHelper.Create(point.PatternName ?? "Validation whitelist", UIPanel.PanelType.Input, player, () => _ = OpenCodeInput(player, point));
             panel.TextLines.Add("Entrez le code de validation reçu par le staff.");
-            panel.SetInputPlaceholder($"{Config.CodePrefix}XXXXXX");
+            panel.SetInputPlaceholder(Config.CodePrefix + new string(Config.CodeDigitsOnly ? '0' : 'X', Mathf.Clamp(Config.CodeLength, 4, 16)));
             panel.AddButton(Color("Valider", Colors.Success), ui => _ = CheckCode(player, point, panel));
             panel.CloseButton();
             panel.Display();
@@ -641,6 +649,7 @@ namespace WhitelistNova
             panel.AddTabLine($"Questionnaire ({questions} question(s))", ui => _ = ShowQuestions(player));
             panel.AddTabLine($"Lieux d'attente ({waitPoints})", ui => _ = ShowWaitPoints(player));
             panel.AddTabLine("Points de saisie du code", _ => new WlCodePattern(false) { Context = this }.CreateOrGenerate(player));
+            panel.AddTabLine("Destination après le code (téléportation)", ui => _ = ShowDestinations(player));
             panel.AddTabLine("Joueurs connectés (whitelister / révoquer)", ui => _ = ShowOnlinePlayers(player));
             panel.AddTabLine("Paramètres", _ => ShowSettings(player));
             panel.AddTabLine(Color(IsTesting(player) ? "Mode test (en cours)" : "Tester le plugin sur moi", Colors.Purple), ui => _ = ShowTestMenu(player));
@@ -789,19 +798,68 @@ namespace WhitelistNova
 
         private async Task<string> GenerateUniqueCode()
         {
-            const string alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+            string alphabet = Config.CodeDigitsOnly ? "0123456789" : "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
             int length = Mathf.Clamp(Config.CodeLength, 4, 16);
+            // Un code n'est jamais donné à deux joueurs qui doivent encore le saisir
+            HashSet<string> used = new HashSet<string>((await WlCandidature.Query(c => c.Status == WlStatus.Accepted)).Select(c => NormalizeCode(c.Code)));
             using (RandomNumberGenerator rng = RandomNumberGenerator.Create())
             {
-                while (true)
+                for (int attempt = 0; ; attempt++)
                 {
-                    byte[] bytes = new byte[length];
+                    // Si presque tous les codes sont pris, on allonge le code d'un caractère
+                    int size = length + attempt / 200;
+                    byte[] bytes = new byte[4 * size];
                     rng.GetBytes(bytes);
-                    string code = Config.CodePrefix + new string(bytes.Select(b => alphabet[b % alphabet.Length]).ToArray());
-                    if ((await WlCandidature.Query(c => c.Code == code)).Count == 0)
+                    string code = Config.CodePrefix + new string(Enumerable.Range(0, size)
+                        .Select(i => alphabet[(int)(BitConverter.ToUInt32(bytes, i * 4) % (uint)alphabet.Length)]).ToArray());
+                    if (!used.Contains(NormalizeCode(code)))
                         return code;
                 }
             }
+        }
+
+        // ------------------------------------------------------------------
+        //  Destination : où le joueur est téléporté après avoir saisi son code
+        // ------------------------------------------------------------------
+
+        private async Task ShowDestinations(Player player)
+        {
+            List<WlCodePattern> patterns = await WlCodePattern.QueryAll();
+            string action = "";
+
+            Panel panel = PanelHelper.Create("Whitelist - Destination après le code", UIPanel.PanelType.Tab, player, () => _ = ShowDestinations(player));
+            if (patterns.Count == 0)
+                panel.AddTabLine(Color("Aucun point de validation : créez-en un", Colors.Warning), _ => new WlCodePattern(false) { Context = this }.SetPatternData(player));
+
+            foreach (WlCodePattern pattern in patterns)
+            {
+                Vector3? destination = pattern.GetDestination();
+                string shown = destination == null
+                    ? Color("non définie", Colors.Error)
+                    : Color($"{destination.Value.x:0} / {destination.Value.y:0} / {destination.Value.z:0}", Colors.Success);
+                panel.AddTabLine($"{pattern.PatternName} : {shown}", async _ =>
+                {
+                    if (action == "tp")
+                    {
+                        if (destination != null) player.setup.TargetSetPosition(destination.Value);
+                        else player.Notify(Title, "Aucune destination définie.", NotificationManager.Type.Warning, 5f);
+                        return;
+                    }
+                    pattern.SetDestination(player.setup.transform.position);
+                    if (await pattern.Save())
+                        player.Notify(Title, $"Les joueurs qui valident leur code sur « {pattern.PatternName} » arriveront ici.", NotificationManager.Type.Success, 8f);
+                    panel.Refresh();
+                });
+            }
+
+            if (patterns.Count > 0)
+            {
+                panel.AddButton(Color("Ma position", Colors.Success), _ => { action = "set"; panel.SelectTab(); });
+                panel.AddButton("Se téléporter", _ => { action = "tp"; panel.SelectTab(); });
+            }
+            panel.PreviousButton();
+            panel.CloseButton();
+            panel.Display();
         }
 
         // ------------------------------------------------------------------
@@ -1125,6 +1183,7 @@ namespace WhitelistNova
             AddToggle(panel, "Staff exempté", c.StaffBypass, v => c.StaffBypass = v);
             AddToggle(panel, "Nouvelle candidature après refus", c.AllowRetryAfterRefuse, v => c.AllowRetryAfterRefuse = v);
             AddSetting(panel, player, "Préfixe du code", string.IsNullOrEmpty(c.CodePrefix) ? "aucun" : c.CodePrefix, "Préfixe des codes (- pour aucun)", c.CodePrefix, text => { c.CodePrefix = text == "-" ? "" : text; return true; });
+            AddToggle(panel, "Code uniquement en chiffres", c.CodeDigitsOnly, v => c.CodeDigitsOnly = v);
             AddSetting(panel, player, "Longueur du code", c.CodeLength.ToString(), "Nombre de caractères (4 à 16)", c.CodeLength.ToString(), text =>
             {
                 if (!int.TryParse(text, out int v) || v < 4 || v > 16) return false;
@@ -1375,8 +1434,12 @@ namespace WhitelistNova
         public string WelcomeText = "Bienvenue sur le serveur !\nAvant de pouvoir jouer, réponds à ce petit questionnaire.\nUn membre du staff étudiera ta candidature.";
         public string EndText = "Merci ! Ta candidature a été envoyée au staff. Tu recevras ton code de validation dès qu'elle sera acceptée.";
         public string AcceptedText = "Ta candidature a été acceptée !\nRends-toi sur le point de validation et entre ton code.";
-        public string CodePrefix = "WL-";
-        public int CodeLength = 6;
+        public string CodePrefix = "";
+        public int CodeLength = 4;
+        /// <summary>true = code uniquement en chiffres (ex. 4821), false = lettres et chiffres.</summary>
+        public bool CodeDigitsOnly = true;
+        /// <summary>Version du fichier, pour mettre à jour les anciens config.json.</summary>
+        public int ConfigVersion;
         public int MaxCodeAttempts = 5;
         public bool FreezePlayers = true;
         public float MaxDistance = 30f;
