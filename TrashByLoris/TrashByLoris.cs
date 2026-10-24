@@ -9,6 +9,7 @@ using ModKit.Interfaces;
 using ModKit.Internal;
 using ModKit.Utils;
 using UnityEngine;
+using Logger = ModKit.Internal.Logger;
 using static ModKit.Helper.TextFormattingHelper;
 
 namespace TrashByLoris
