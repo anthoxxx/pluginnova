@@ -2,9 +2,9 @@
 
 ## 🗑️ Présentation
 
-**Trash by Loris** permet à chaque joueur de **poser une poubelle** et d'y jeter ses objets.
+**Trash by Loris** permet aux joueurs de jeter leurs objets dans une poubelle : une poubelle **posée par un joueur**, ou une des **poubelles déjà présentes sur la map**.
 
-Quand un joueur est à côté d'une poubelle, il ouvre le menu **Proximité** d'AAMenu, clique sur la poubelle, choisit l'objet et la quantité, et c'est fini :
+Quand un joueur est à côté d'une poubelle, il l'ouvre depuis AAMenu, choisit l'objet et la quantité, et c'est fini :
 
 - l'objet est **retiré de son inventaire** ;
 - il n'est **stocké nulle part** (ni coffre ni stockage caché) ;
@@ -15,16 +15,19 @@ Quand un joueur est à côté d'une poubelle, il ouvre le menu **Proximité** d'
 | | |
 |---|---|
 | 🗑️ **Poubelles posées par les joueurs** | N'importe quel joueur peut poser une poubelle et l'utiliser. |
-| 📍 **Menu Proximité** | La poubelle apparaît dans le menu Proximité d'AAMenu quand on est à côté. |
+| 🏙️ **Poubelles de la map** | Toutes les poubelles déjà placées sur la map fonctionnent aussi. |
+| 📍 **Menus AAMenu** | Accessible depuis **Proximité** (poubelles posées) et **Interactions** (toutes les poubelles). |
 | 🎒 **Menu inventaire** | Le joueur voit son inventaire avec les icônes et les quantités. |
 | 🔢 **Quantité au choix** | Jeter une partie de ses objets, ou **Tout jeter** d'un coup. |
 | ⚠️ **Avertissement** | Le joueur est prévenu que l'objet sera détruit avant de valider. |
 | 🔥 **Destruction définitive** | Les objets jetés sont effacés, impossible de les récupérer. |
 | 📏 **Vérification de distance** | Impossible de jeter un objet si on s'est éloigné de la poubelle. |
 
-## 🧱 Objets « poubelle » reconnus
+## 🧱 Poubelles reconnues
 
-Les objets avec ces ID ouvrent le menu de la poubelle : `70`, `1087`, `1276`, `1277`, `1364`, `1365`.
+- **Poubelles posées** : les objets avec les ID `70`, `1087`, `1276`, `1277`, `1364`, `1365`.
+- **Poubelles de la map** : toutes celles déjà présentes sur la map (celles du métier d'éboueur).
+  Une poubelle ramassée par un éboueur ne peut pas être utilisée tant qu'elle n'est pas revenue.
 
 ## 📦 Installation
 
@@ -36,9 +39,11 @@ C'est tout, il n'y a pas de fichier de configuration à remplir.
 
 ## 🎮 Utilisation
 
-1. **Pose une poubelle** (un des objets listés ci-dessus).
+1. Va à côté d'une **poubelle de la map**, ou **pose ta poubelle** (un des objets listés ci-dessus).
 2. Place-toi **à côté** de la poubelle (moins de 3 mètres).
-3. Ouvre le menu **AAMenu → Proximité** → clique sur **Poubelle - Jeter des objets**.
+3. Ouvre AAMenu :
+   - **Interactions → Poubelle** : marche avec toutes les poubelles ;
+   - ou **Proximité → Poubelle - Jeter des objets** : pour les poubelles posées.
 4. Choisis l'objet à jeter dans ton inventaire → **Jeter**.
 5. Indique la quantité → **Jeter** (ou **Tout jeter**).
 6. L'objet est détruit. ⚠️ **Il ne pourra pas être récupéré.**

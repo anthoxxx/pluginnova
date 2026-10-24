@@ -1,19 +1,21 @@
 # 🗑️ Trash by Loris
--# Plugin serveur Nova-Life : Amboise · v2.0.0
+-# Plugin serveur Nova-Life : Amboise · v2.1.0
 
-**Pose une poubelle**, clique dessus, jette tes objets : ils **disparaissent pour de bon**.
+Va à une **poubelle de la map** ou **pose la tienne**, ouvre-la, jette tes objets : ils **disparaissent pour de bon**.
 > L'objet est retiré de l'inventaire, n'est stocké nulle part, et **personne ne peut le récupérer**, pas même un admin.
 
 ## ✨ Fonctionnalités
 🗑️ Chaque joueur peut poser sa poubelle
-📍 Accessible depuis le menu **Proximité** d'AAMenu
+🏙️ Toutes les poubelles de la map marchent aussi
+📍 Dans AAMenu : **Interactions** ou **Proximité**
 🎒 Menu inventaire avec icônes et quantités
 🔢 Quantité au choix, ou **Tout jeter**
 ⚠️ Avertissement avant la destruction
 📏 Il faut rester à côté de la poubelle pour jeter
 
 ## 🧱 Poubelles reconnues
-ID d'objets : `70` · `1087` · `1276` · `1277` · `1364` · `1365`
+Poubelles posées : `70` · `1087` · `1276` · `1277` · `1364` · `1365`
+Poubelles de la map : toutes ✅
 
 ## 📦 Installation
 **1.** Installe **ModKit** et **AAMenu** sur ton serveur
@@ -21,7 +23,7 @@ ID d'objets : `70` · `1087` · `1276` · `1277` · `1364` · `1365`
 **3.** Redémarre le serveur ✅
 
 ## 🎮 Utilisation
-Pose une poubelle → mets-toi à côté → **AAMenu → Proximité** → **Poubelle - Jeter des objets** → choisis l'objet et la quantité → c'est effacé 🔥
+Mets-toi à côté d'une poubelle → **AAMenu → Interactions → Poubelle** (ou **Proximité**) → choisis l'objet et la quantité → c'est effacé 🔥
 
 ## ⚖️ Licence
 © 2026 Loris. Tous droits réservés.

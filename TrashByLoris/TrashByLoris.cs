@@ -8,14 +8,15 @@ using ModKit.Helper;
 using ModKit.Interfaces;
 using ModKit.Internal;
 using ModKit.Utils;
+using UnityEngine;
 using static ModKit.Helper.TextFormattingHelper;
 
 namespace TrashByLoris
 {
     /// <summary>
-    /// Trash by Loris : chaque joueur peut poser une poubelle (objet du jeu).
-    /// À côté d'une poubelle, le menu Proximité d'AAMenu propose de jeter des objets :
-    /// ils sont retirés de l'inventaire et ne sont stockés nulle part (irrécupérables).
+    /// Trash by Loris : les joueurs jettent leurs objets dans une poubelle, qu'elle soit
+    /// posée par un joueur ou déjà présente sur la map. Les objets jetés sont retirés de
+    /// l'inventaire et ne sont stockés nulle part (irrécupérables).
     /// </summary>
     public class TrashByLorisPlugin : ModKit.ModKit
     {
@@ -24,9 +25,12 @@ namespace TrashByLoris
         /// <summary>ID des objets « poubelle » qui donnent accès au menu.</summary>
         private static readonly int[] TrashObjectIds = { 70, 1087, 1276, 1277, 1364, 1365 };
 
+        /// <summary>Distance maximale (en mètres) pour utiliser une poubelle de la map.</summary>
+        private const float MapTrashRange = 3f;
+
         public TrashByLorisPlugin(IGameAPI api) : base(api)
         {
-            PluginInformations = new PluginInformations(AssemblyHelper.GetName(), "2.0.0", "Loris");
+            PluginInformations = new PluginInformations(AssemblyHelper.GetName(), "2.1.0", "Loris");
         }
 
         public override void OnPluginInit()
@@ -49,6 +53,24 @@ namespace TrashByLoris
                     if (player != null) OpenTrash(player);
                 });
             }
+
+            // Les poubelles de la map ne sont pas des objets posés : AAMenu ne les voit pas
+            // dans Proximité. On ajoute donc une ligne dans Interactions qui vérifie elle-même
+            // qu'une poubelle (de la map ou posée) est à côté du joueur.
+            AAMenu.Menu.AddInteractionTabLine(PluginInformations, "Poubelle", ui =>
+            {
+                Player player = PanelHelper.ReturnPlayerFromPanel(ui);
+                if (player == null) return;
+                if (IsNearTrash(player))
+                {
+                    OpenTrash(player);
+                }
+                else
+                {
+                    player.Notify(NotifyTitle, "Aucune poubelle à proximité.", NotificationManager.Type.Warning, 5f);
+                    AAMenu.AAMenu.menu.InteractionPanel(player);
+                }
+            });
 
             Logger.LogSuccess($"{PluginInformations.SourceName} v{PluginInformations.Version}", "initialisé");
         }
@@ -134,12 +156,33 @@ namespace TrashByLoris
             return true;
         }
 
+        /// <summary>Le joueur est-il à côté d'une poubelle posée ou d'une poubelle de la map ?</summary>
         private bool IsNearTrash(Player player)
         {
             List<int> nearby = ProximityHelper.GetNearbyObjectsId(player);
             foreach (int objectId in TrashObjectIds)
             {
                 if (nearby.Contains(objectId)) return true;
+            }
+            return IsNearMapTrash(player);
+        }
+
+        /// <summary>
+        /// Poubelles déjà placées sur la map (celles du métier d'éboueur) : le jeu les
+        /// enregistre dans Nova.server.trashes au démarrage du serveur.
+        /// </summary>
+        private static bool IsNearMapTrash(Player player)
+        {
+            if (player.setup == null || Nova.server.trashes == null) return false;
+
+            Vector3 playerPos = ((Component)player.setup).transform.position;
+            foreach (Life.VehicleSystem.Trash trash in Nova.server.trashes)
+            {
+                // Ignore les poubelles ramassées (invisibles) ou portées par un éboueur
+                if (trash == null || !trash.isVisible || trash.isHoldedByPlayer) continue;
+
+                if (Vector3.Distance(playerPos, ((Component)trash).transform.position) <= MapTrashRange)
+                    return true;
             }
             return false;
         }
