@@ -54,6 +54,22 @@ Whitelist - Saisie du code**.
 
 Un questionnaire d'exemple est créé au premier démarrage : modifiez-le ou supprimez-le.
 
+## Tester seul (mode test)
+**/wladmin → Tester le plugin sur moi** : vous faites le parcours complet d'un nouveau
+joueur, même en étant staff.
+
+Le menu vérifie d'abord la configuration ([OK] / [X]) : questions, lieux d'attente,
+modèle de point avec destination, point de saisie placé, webhook Discord (optionnel).
+Le bouton **Tester Discord** envoie un message de test sur le webhook.
+
+1. **Démarrer le test** : vous êtes téléporté et gelé sur un lieu d'attente, le questionnaire s'ouvre.
+2. Répondez et envoyez : l'alerte arrive en jeu et sur Discord (candidature marquée `[TEST]`).
+3. `/wladmin` → **Candidatures en attente** → acceptez votre candidature `[TEST]` : le code s'affiche.
+4. Allez sur le point bleu de validation et entrez le code.
+5. Vous êtes téléporté à la **destination choisie pour ce point** : test terminé.
+
+**Arrêter le test** (même menu) vous libère à tout moment.
+
 ## Paramètres
 Modifiables en jeu (**Paramètres**) ou dans `Plugins/Whitelist.nova/config.json`
 (puis « Recharger config.json ») :

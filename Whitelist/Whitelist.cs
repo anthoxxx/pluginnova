@@ -58,6 +58,11 @@ namespace WhitelistNova
         /// <summary>Positions des points de saisie du code (zone autorisée pour les joueurs acceptés).</summary>
         private List<Vector3> codePointPositions = new List<Vector3>();
 
+        /// <summary>Staff en mode test : ils suivent le parcours complet d'un nouveau joueur.</summary>
+        private readonly HashSet<int> testers = new HashSet<int>();
+
+        public const string TestTag = "[TEST] ";
+
         public WhitelistPlugin(IGameAPI api) : base(api)
         {
             PluginInformations = new PluginInformations(AssemblyHelper.GetName(), "1.0.0", "Loris Strange & Matheo Mercier");
@@ -227,6 +232,7 @@ namespace WhitelistNova
         {
             if (player?.account == null) return;
             blocked.Remove(player.account.id);
+            testers.Remove(player.account.id);
             drafts.Remove(player.account.id);
             SetFrozen(player, false);
         }
@@ -313,9 +319,9 @@ namespace WhitelistNova
             if (!IsOnline(player)) return;
             WlCandidature last = await GetLastCandidature(player.account.id);
 
-            if (last != null && last.Status == WlStatus.Validated)
+            if (last != null && last.Status == WlStatus.Validated && !IsTesting(player))
                 player.Notify(Title, "Vous êtes déjà whitelisté.", NotificationManager.Type.Success, 5f);
-            else if (last == null || last.Status == WlStatus.Revoked)
+            else if (last == null || last.Status == WlStatus.Revoked || last.Status == WlStatus.Validated)
                 await StartQuestionnaire(player);
             else if (last.Status == WlStatus.Pending)
                 player.Notify(Title, "Votre candidature est en cours d'examen par le staff.", NotificationManager.Type.Info, 5f);
@@ -459,8 +465,9 @@ namespace WhitelistNova
                 return;
             }
 
+            bool isTest = IsTesting(player);
             WlCandidature last = await GetLastCandidature(player.account.id);
-            if (last != null && (last.Status == WlStatus.Pending || last.Status == WlStatus.Accepted || last.Status == WlStatus.Validated))
+            if (!isTest && last != null && (last.Status == WlStatus.Pending || last.Status == WlStatus.Accepted || last.Status == WlStatus.Validated))
             {
                 player.Notify(Title, "Vous avez déjà une candidature en cours.", NotificationManager.Type.Warning, 5f);
                 panel.Close();
@@ -473,7 +480,7 @@ namespace WhitelistNova
                 CharacterId = player.character?.Id ?? 0,
                 SteamId = player.steamId.ToString(),
                 SteamName = player.steamUsername,
-                PlayerName = player.FullName,
+                PlayerName = (isTest ? TestTag : "") + player.FullName,
                 Status = WlStatus.Pending,
                 CreatedAt = Nova.UnixTimeNow()
             };
@@ -491,7 +498,9 @@ namespace WhitelistNova
             panel.Close();
             player.Notify(Title, Config.EndText, NotificationManager.Type.Success, 10f);
 
-            NotifyStaff($"Nouvelle candidature de {player.FullName} (#{candidature.Id}). Ouvrez /wladmin ou AAMenu > Whitelist.");
+            NotifyStaff($"Nouvelle candidature de {candidature.PlayerName} (#{candidature.Id}). Ouvrez /wladmin ou AAMenu > Whitelist.");
+            if (isTest)
+                player.Notify(Title, "[TEST] Étape suivante : /wladmin > Candidatures en attente > acceptez votre propre candidature.", NotificationManager.Type.Info, 12f);
             await SendDiscordCandidature(candidature);
         }
 
@@ -590,10 +599,13 @@ namespace WhitelistNova
             }
 
             codeAttempts.Remove(accountId);
+            bool wasTest = IsTesting(player);
             Unblock(player);
             panel.Close();
             player.setup.TargetSetPosition(destination.Value);
             player.Notify(Title, "Code validé ! Bienvenue sur le serveur, bon jeu !", NotificationManager.Type.Success, 10f);
+            if (wasTest)
+                player.Notify(Title, "[TEST] Test terminé avec succès : tout le parcours fonctionne.", NotificationManager.Type.Success, 12f);
 
             NotifyStaff($"{player.FullName} a validé son code et est maintenant whitelisté.");
             await SendDiscordLog("Joueur whitelisté", $"**{last.PlayerName}** a saisi son code de validation et est entré sur le serveur.", "#2ecc71", last);
@@ -629,6 +641,7 @@ namespace WhitelistNova
             panel.AddTabLine("Points de saisie du code", _ => new WlCodePattern(false) { Context = this }.CreateOrGenerate(player));
             panel.AddTabLine("Joueurs connectés (whitelister / révoquer)", ui => _ = ShowOnlinePlayers(player));
             panel.AddTabLine("Paramètres", _ => ShowSettings(player));
+            panel.AddTabLine(Color(IsTesting(player) ? "Mode test (en cours)" : "Tester le plugin sur moi", Colors.Purple), ui => _ = ShowTestMenu(player));
 
             panel.NextButton("Ouvrir", () => panel.SelectTab());
             panel.CloseButton();
@@ -1154,6 +1167,77 @@ namespace WhitelistNova
                 }));
         }
 
+        // ------------------------------------------------------------------
+        //  Mode test : le staff fait tout le parcours d'un nouveau joueur
+        // ------------------------------------------------------------------
+
+        public bool IsTesting(Player player) => player?.account != null && testers.Contains(player.account.id);
+
+        private async Task ShowTestMenu(Player player)
+        {
+            List<WlQuestion> questions = await GetQuestions();
+            int waitPoints = (await WlWaitPoint.QueryAll()).Count;
+            List<WlCodePattern> patterns = await WlCodePattern.QueryAll();
+            int placedPoints = (await ModEntity<NPoint>.Query(p => p.TypeName == nameof(WlCodePattern))).Count;
+            bool testing = IsTesting(player);
+
+            Panel panel = PanelHelper.Create("Whitelist - Mode test", UIPanel.PanelType.Text, player, () => _ = ShowTestMenu(player));
+            panel.TextLines.Add("Vous jouez le rôle d'un nouveau joueur, même en étant staff.");
+            panel.TextLines.Add("");
+            panel.TextLines.Add(Bold("Vérification de la configuration :"));
+            panel.TextLines.Add(Check(questions.Count > 0, $"{questions.Count} question(s) dans le questionnaire"));
+            panel.TextLines.Add(Check(waitPoints > 0, $"{waitPoints} lieu(x) d'attente"));
+            panel.TextLines.Add(Check(patterns.Any(p => p.HasDestination), $"{patterns.Count(p => p.HasDestination)} modèle(s) de point avec destination"));
+            panel.TextLines.Add(Check(placedPoints > 0, $"{placedPoints} point(s) de saisie du code placé(s)"));
+            panel.TextLines.Add(Check(!string.IsNullOrEmpty(Config.DiscordWebhookUrl), "Webhook Discord " + (string.IsNullOrEmpty(Config.DiscordWebhookUrl) ? "non défini (optionnel)" : "défini")));
+            panel.TextLines.Add("");
+            panel.TextLines.Add(Bold("Déroulement du test :"));
+            panel.TextLines.Add("1. Démarrer : vous êtes téléporté et gelé sur un lieu d'attente.");
+            panel.TextLines.Add("2. Répondez au questionnaire et envoyez-le (alerte en jeu + Discord).");
+            panel.TextLines.Add("3. /wladmin > Candidatures en attente > acceptez votre candidature [TEST].");
+            panel.TextLines.Add("4. Allez sur le point bleu de validation et entrez votre code.");
+            panel.TextLines.Add("5. Vous êtes téléporté à la destination du point : test terminé.");
+
+            if (testing)
+                panel.AddButton(Color("Arrêter le test", Colors.Error), ui => StopTest(player, panel));
+            else
+                panel.AddButton(Color("Démarrer le test", Colors.Success), ui => _ = StartTest(player, panel));
+            if (!string.IsNullOrEmpty(Config.DiscordWebhookUrl))
+                panel.AddButton("Tester Discord", ui => _ = TestDiscord(player));
+            panel.PreviousButton();
+            panel.CloseButton();
+            panel.Display();
+        }
+
+        private static string Check(bool ok, string text) => (ok ? Color("[OK] ", Colors.Success) : Color("[X] ", Colors.Error)) + text;
+
+        private async Task StartTest(Player player, Panel panel)
+        {
+            if (!IsStaff(player)) return;
+            testers.Add(player.account.id);
+            drafts.Remove(player.account.id);
+            codeAttempts.Remove(player.account.id);
+            panel.Close();
+
+            Block(player, null);
+            player.Notify(Title, "[TEST] Mode test démarré. Arrêt : /wladmin > Mode test > Arrêter le test.", NotificationManager.Type.Info, 10f);
+            await StartQuestionnaire(player);
+        }
+
+        private void StopTest(Player player, Panel panel)
+        {
+            Unblock(player);
+            panel.Close();
+            player.Notify(Title, "[TEST] Mode test arrêté, vous êtes libre.", NotificationManager.Type.Success, 6f);
+        }
+
+        private async Task TestDiscord(Player player)
+        {
+            await SendDiscord("[TEST] Whitelist.nova", $"Message de test envoyé par **{player.FullName}**. Le webhook fonctionne !", Config.DiscordColor,
+                new List<string>(), new List<string>(), false);
+            player.Notify(Title, "Message de test envoyé sur Discord.", NotificationManager.Type.Success, 5f);
+        }
+
         // ==================================================================
         //  Discord et alertes staff
         // ==================================================================
@@ -1170,7 +1254,7 @@ namespace WhitelistNova
         private async Task SendDiscordCandidature(WlCandidature c)
         {
             List<WlAnswer> answers = c.GetAnswers().Take(24).ToList();
-            await SendDiscord("Nouvelle candidature whitelist",
+            await SendDiscord((c.PlayerName ?? "").StartsWith(TestTag) ? "[TEST] Nouvelle candidature whitelist" : "Nouvelle candidature whitelist",
                 $"**Joueur :** {c.PlayerName}\n**Steam :** {c.SteamName} ({c.SteamId})\n**Compte :** #{c.AccountId}\n**Candidature :** #{c.Id}\n\nÀ traiter en jeu : `/wladmin` ou AAMenu > Whitelist.",
                 Config.DiscordColor,
                 answers.Select(a => Truncate(a.Question, 250)).ToList(),
