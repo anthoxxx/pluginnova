@@ -440,16 +440,18 @@ namespace WhitelistNova
         {
             Dictionary<int, string> answers = GetDraft(player);
 
-            Panel panel = PanelHelper.Create($"{Config.FormTitle} - Récapitulatif", UIPanel.PanelType.Text, player, () => ShowSummary(player, questions));
-            foreach (WlQuestion question in questions)
+            // Liste à onglets (défilante) : sélectionner une ligne permet de modifier la réponse
+            Panel panel = PanelHelper.Create($"{Config.FormTitle} - Récapitulatif", UIPanel.PanelType.Tab, player, () => ShowSummary(player, questions));
+            for (int i = 0; i < questions.Count; i++)
             {
-                answers.TryGetValue(question.Id, out string answer);
-                panel.TextLines.Add(Bold(question.Text));
-                panel.TextLines.Add(string.IsNullOrEmpty(answer) ? Color("(sans réponse)", Colors.Grey) : answer);
+                int index = i;
+                answers.TryGetValue(questions[i].Id, out string answer);
+                string shown = string.IsNullOrEmpty(answer) ? Color("(sans réponse)", Colors.Grey) : Truncate(answer, 40);
+                panel.AddTabLine($"{i + 1}. {Truncate(questions[i].Text, 35)} : {shown}", _ => AskQuestion(player, questions, index));
             }
 
             panel.AddButton(Color("Envoyer", Colors.Success), ui => _ = Submit(player, questions, panel));
-            panel.AddButton("Modifier", _ => AskQuestion(player, questions, 0));
+            panel.AddButton("Modifier", _ => panel.SelectTab());
             panel.CloseButton();
             panel.Display();
         }
@@ -678,21 +680,27 @@ namespace WhitelistNova
 
         private void ShowCandidature(Player player, WlCandidature c)
         {
-            Panel panel = PanelHelper.Create($"Candidature #{c.Id} - {c.PlayerName}", UIPanel.PanelType.Text, player, () => ShowCandidature(player, c));
-            panel.TextLines.Add($"Statut : {WlStatus.Label(c.Status)}");
-            panel.TextLines.Add(Color($"Steam : {c.SteamName} ({c.SteamId}) - Compte #{c.AccountId}", Colors.Grey));
+            // Liste à onglets (défilante) : sélectionner une réponse l'affiche en entier
+            Panel panel = PanelHelper.Create($"Candidature #{c.Id} - {c.PlayerName}", UIPanel.PanelType.Tab, player, () => ShowCandidature(player, c));
+            panel.AddTabLine($"Statut : {WlStatus.Label(c.Status)}", _ => { });
+            panel.AddTabLine(Color($"Steam : {c.SteamName} ({c.SteamId})", Colors.Grey), _ => { });
             if (!string.IsNullOrEmpty(c.ReviewedBy))
-                panel.TextLines.Add(Color($"Traitée par : {c.ReviewedBy}", Colors.Grey));
+                panel.AddTabLine(Color($"Traitée par : {c.ReviewedBy}", Colors.Grey), _ => { });
             if (!string.IsNullOrEmpty(c.Code))
-                panel.TextLines.Add($"Code : {Bold(c.Code)}");
+                panel.AddTabLine($"Code : {Bold(c.Code)}", _ => { });
             if (!string.IsNullOrEmpty(c.RefuseReason))
-                panel.TextLines.Add($"Raison du refus : {c.RefuseReason}");
-            panel.TextLines.Add("");
-            foreach (WlAnswer answer in c.GetAnswers())
+                panel.AddTabLine($"Refus : {Truncate(c.RefuseReason, 50)}", _ => ShowText(player, "Raison du refus", c.RefuseReason));
+
+            List<WlAnswer> answers = c.GetAnswers();
+            for (int i = 0; i < answers.Count; i++)
             {
-                panel.TextLines.Add(Bold(Color(answer.Question, Colors.Info)));
-                panel.TextLines.Add(string.IsNullOrEmpty(answer.Answer) ? Color("(sans réponse)", Colors.Grey) : answer.Answer);
+                WlAnswer answer = answers[i];
+                int number = i + 1;
+                string shown = string.IsNullOrEmpty(answer.Answer) ? Color("(sans réponse)", Colors.Grey) : Truncate(answer.Answer, 40);
+                panel.AddTabLine($"{Color($"Q{i + 1}.", Colors.Info)} {Truncate(answer.Question, 30)} : {shown}", _ =>
+                    ShowText(player, $"Question {number}", Bold(Color(answer.Question, Colors.Info)), string.IsNullOrEmpty(answer.Answer) ? "(sans réponse)" : answer.Answer));
             }
+            panel.AddButton("Lire", _ => panel.SelectTab());
 
             if (c.Status == WlStatus.Pending)
             {
@@ -1181,29 +1189,32 @@ namespace WhitelistNova
             int placedPoints = (await ModEntity<NPoint>.Query(p => p.TypeName == nameof(WlCodePattern))).Count;
             bool testing = IsTesting(player);
 
-            Panel panel = PanelHelper.Create("Whitelist - Mode test", UIPanel.PanelType.Text, player, () => _ = ShowTestMenu(player));
-            panel.TextLines.Add("Vous jouez le rôle d'un nouveau joueur, même en étant staff.");
-            panel.TextLines.Add("");
-            panel.TextLines.Add(Bold("Vérification de la configuration :"));
-            panel.TextLines.Add(Check(questions.Count > 0, $"{questions.Count} question(s) dans le questionnaire"));
-            panel.TextLines.Add(Check(waitPoints > 0, $"{waitPoints} lieu(x) d'attente"));
-            panel.TextLines.Add(Check(patterns.Any(p => p.HasDestination), $"{patterns.Count(p => p.HasDestination)} modèle(s) de point avec destination"));
-            panel.TextLines.Add(Check(placedPoints > 0, $"{placedPoints} point(s) de saisie du code placé(s)"));
-            panel.TextLines.Add(Check(!string.IsNullOrEmpty(Config.DiscordWebhookUrl), "Webhook Discord " + (string.IsNullOrEmpty(Config.DiscordWebhookUrl) ? "non défini (optionnel)" : "défini")));
-            panel.TextLines.Add("");
-            panel.TextLines.Add(Bold("Déroulement du test :"));
-            panel.TextLines.Add("1. Démarrer : vous êtes téléporté et gelé sur un lieu d'attente.");
-            panel.TextLines.Add("2. Répondez au questionnaire et envoyez-le (alerte en jeu + Discord).");
-            panel.TextLines.Add("3. /wladmin > Candidatures en attente > acceptez votre candidature [TEST].");
-            panel.TextLines.Add("4. Allez sur le point bleu de validation et entrez votre code.");
-            panel.TextLines.Add("5. Vous êtes téléporté à la destination du point : test terminé.");
-
+            // Liste à onglets (défilante) : chaque vérification ouvre le menu à corriger
+            Panel panel = PanelHelper.Create("Whitelist - Mode test", UIPanel.PanelType.Tab, player, () => _ = ShowTestMenu(player));
             if (testing)
-                panel.AddButton(Color("Arrêter le test", Colors.Error), ui => StopTest(player, panel));
+                panel.AddTabLine(Color("Arrêter le test", Colors.Error), _ => StopTest(player, panel));
             else
-                panel.AddButton(Color("Démarrer le test", Colors.Success), ui => _ = StartTest(player, panel));
-            if (!string.IsNullOrEmpty(Config.DiscordWebhookUrl))
-                panel.AddButton("Tester Discord", ui => _ = TestDiscord(player));
+                panel.AddTabLine(Color("Démarrer le test", Colors.Success), ui => _ = StartTest(player, panel));
+            panel.AddTabLine("Comment se déroule le test ?", _ => ShowText(player, "Déroulement du test",
+                "1. Vous êtes bloqué sur un lieu d'attente.",
+                "2. Remplissez et envoyez le questionnaire.",
+                "3. /wladmin : acceptez votre candidature [TEST].",
+                "4. Entrez le code sur le point bleu.",
+                "5. Vous êtes téléporté à la destination."));
+            panel.AddTabLine(Check(questions.Count > 0, $"{questions.Count} question(s)"), ui => _ = ShowQuestions(player));
+            panel.AddTabLine(Check(waitPoints > 0, $"{waitPoints} lieu(x) d'attente"), ui => _ = ShowWaitPoints(player));
+            panel.AddTabLine(Check(patterns.Any(p => p.HasDestination), $"{patterns.Count(p => p.HasDestination)} point(s) avec destination"),
+                _ => new WlCodePattern(false) { Context = this }.CreateOrGenerate(player));
+            panel.AddTabLine(Check(placedPoints > 0, $"{placedPoints} point(s) de code placé(s)"),
+                _ => new WlCodePattern(false) { Context = this }.CreateOrGenerate(player));
+            bool hasWebhook = !string.IsNullOrEmpty(Config.DiscordWebhookUrl);
+            panel.AddTabLine(Check(hasWebhook, hasWebhook ? "Webhook Discord (tester)" : "Webhook Discord (optionnel)"), ui =>
+            {
+                if (hasWebhook) _ = TestDiscord(player);
+                else ShowSettings(player);
+            });
+
+            panel.NextButton("Choisir", () => panel.SelectTab());
             panel.PreviousButton();
             panel.CloseButton();
             panel.Display();
@@ -1325,6 +1336,17 @@ namespace WhitelistNova
                 }
                 return await onValidate(text);
             });
+            panel.PreviousButton();
+            panel.CloseButton();
+            panel.Display();
+        }
+
+        /// <summary>Petit panneau de texte en lecture seule (garder peu de lignes : il ne défile pas).</summary>
+        private void ShowText(Player player, string title, params string[] lines)
+        {
+            Panel panel = PanelHelper.Create($"Whitelist - {title}", UIPanel.PanelType.Text, player, () => ShowText(player, title, lines));
+            foreach (string line in lines)
+                panel.TextLines.Add(line);
             panel.PreviousButton();
             panel.CloseButton();
             panel.Display();
