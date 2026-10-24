@@ -5,7 +5,7 @@
     <LangVersion>11.0</LangVersion>
     <AssemblyName>TrashByLoris</AssemblyName>
     <RootNamespace>TrashByLoris</RootNamespace>
-    <Version>1.0.0</Version>
+    <Version>2.0.0</Version>
     <Authors>Loris</Authors>
     <!-- Dossier contenant TOUTES les DLL nécessaires (voir libs/README.md) -->
     <LibsPath Condition="'$(LibsPath)' == ''">$(MSBuildThisFileDirectory)libs</LibsPath>
