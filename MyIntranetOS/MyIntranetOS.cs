@@ -68,13 +68,6 @@ namespace MyIntranetOS
                 Sessions = new SessionManager(this);
                 Apps = new AppRegistry(Path.Combine(DataDir, "Applications"));
                 Apps.Reload();
-
-                MainThread.Init(Nova.man);
-                Game = new NovaGameBridge();
-                Features = new Features(this, Game);
-
-                http = new HttpServer(Config.BindAddress, Config.Port, new Router(this).Handle);
-                http.Start();
             }
             catch (Exception e)
             {
@@ -82,9 +75,38 @@ namespace MyIntranetOS
                 return;
             }
 
-            Nova.server.OnMinutePassedEvent += RefreshAllPlayers;
-            Nova.server.OnPlayerMoneyEvent += OnMoneyChanged;
-            Nova.server.OnPlayerBankEvent += OnBankChanged;
+            // Le serveur web démarre d'abord : la tablette reste accessible même si une fonction du jeu échoue
+            try
+            {
+                http = new HttpServer(Config.BindAddress, Config.Port, new Router(this).Handle);
+                http.Start();
+            }
+            catch (Exception e)
+            {
+                Log.Error($"impossible d'ouvrir le port {Config.Port} ({e.Message}). Le port est-il déjà utilisé ? Changez \"Port\" dans Configuration/configuration.json.");
+            }
+
+            try
+            {
+                MainThread.Init();
+                Game = new NovaGameBridge();
+                Features = new Features(this, Game);
+            }
+            catch (Exception e)
+            {
+                Log.Error($"applications reliées au jeu indisponibles : {e}");
+            }
+
+            try
+            {
+                Nova.server.OnMinutePassedEvent += RefreshAllPlayers;
+                Nova.server.OnPlayerMoneyEvent += OnMoneyChanged;
+                Nova.server.OnPlayerBankEvent += OnBankChanged;
+            }
+            catch (Exception e)
+            {
+                Log.Error($"abonnement aux évènements du serveur impossible : {e.Message}");
+            }
 
             RegisterCommands();
             TryApplyBrowserHomePage();
@@ -110,6 +132,7 @@ namespace MyIntranetOS
         {
             try
             {
+                if (Features == null) return;
                 foreach (PendingCredit credit in Features.TakePendingCredits(player.character.Id))
                 {
                     player.AddBankMoney(credit.Amount, credit.Reason);
@@ -125,7 +148,7 @@ namespace MyIntranetOS
         private void OnBankChanged(Player player, double amount, string reason)
         {
             Players.Update(player);
-            if (player?.character != null) Features.LogBank(player.character.Id, amount, reason);
+            if (player?.character != null) Features?.LogBank(player.character.Id, amount, reason);
         }
 
         public override void OnPlayerDisconnect(NetworkConnection conn)

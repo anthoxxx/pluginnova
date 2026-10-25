@@ -25,22 +25,50 @@ namespace MyIntranetOS
         private static readonly ConcurrentQueue<Action> Queue = new ConcurrentQueue<Action>();
         private static int mainThreadId = -1;
 
-        public static void Init(MonoBehaviour host)
+        /// <summary>
+        /// Démarre la file : un composant Unity propre au plugin (Update) et, en secours, une coroutine
+        /// sur le gestionnaire du jeu. Les deux peuvent tourner ensemble sans risque.
+        /// </summary>
+        public static void Init()
         {
             mainThreadId = Thread.CurrentThread.ManagedThreadId;
-            host.StartCoroutine(Pump());
+            bool started = false;
+            try
+            {
+                GameObject go = new GameObject("MyIntranetOS.MainThread");
+                UnityEngine.Object.DontDestroyOnLoad(go);
+                go.AddComponent<MainThreadPump>();
+                started = true;
+            }
+            catch (Exception e)
+            {
+                Log.Warning($"composant de file non créé ({e.Message}), utilisation d'une coroutine");
+            }
+
+            MonoBehaviour host = Nova.man != null ? Nova.man : UnityEngine.Object.FindObjectOfType<LifeManager>();
+            if (host != null)
+            {
+                host.StartCoroutine(Pump());
+                started = true;
+            }
+            if (!started) throw new InvalidOperationException("aucun objet Unity disponible pour exécuter les actions de jeu");
+        }
+
+        internal static void Drain()
+        {
+            int budget = 200;
+            while (budget-- > 0 && Queue.TryDequeue(out Action action))
+            {
+                try { action(); }
+                catch (Exception e) { Log.Error($"action de jeu en échec : {e}"); }
+            }
         }
 
         private static IEnumerator Pump()
         {
             while (true)
             {
-                int budget = 200;
-                while (budget-- > 0 && Queue.TryDequeue(out Action action))
-                {
-                    try { action(); }
-                    catch (Exception e) { Log.Error($"action de jeu en échec : {e}"); }
-                }
+                Drain();
                 yield return null;
             }
         }
@@ -67,6 +95,12 @@ namespace MyIntranetOS
         }
 
         public static void Post(Action action) => Queue.Enqueue(action);
+    }
+
+    /// <summary>Vide la file d'actions de jeu à chaque image.</summary>
+    internal sealed class MainThreadPump : MonoBehaviour
+    {
+        private void Update() => MainThread.Drain();
     }
 
     // ----------------------------------------------------------------------
