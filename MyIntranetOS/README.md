@@ -79,6 +79,7 @@ dossier dans `Applications/`, elle ne sera pas réinstallée.
 | `PinMaxAttempts` | `5` | Essais avant blocage. |
 | `PinLockoutSeconds` | `300` | Premier blocage ; doublé à chaque récidive (1 h max). |
 | `TrustProxyHeaders` | `false` | `true` uniquement derrière un reverse proxy (utilise `X-Forwarded-For`). |
+| `ProxySecret` | `""` | Clé partagée avec le proxy : l'adresse du joueur transmise n'est acceptée que si la requête porte `X-MyIntranet-Proxy` avec cette valeur. |
 | `SetAsBrowserHomePage` | `false` | Définit `PublicUrl` comme page d'accueil du navigateur en jeu. |
 | `ShowMoney` | `true` | Expose l'argent et la banque aux applications. |
 | `BankTransfersEnabled` | `true` | Autorise les virements depuis l'application Banque. |
@@ -108,6 +109,26 @@ Chaque service relie une application aux joueurs d'entreprises précises :
 
 Par défaut, **Assurances** et **Avocats** n'ont aucune activité correspondante dans le jeu : renseignez leurs
 `BizIds`, sinon l'application affiche « service non configuré ».
+
+## Adresse en https avec Netlify
+
+Netlify peut servir de passerelle : `https://votre-site.netlify.app` relaie tout vers le plugin.
+`netlify.toml` :
+
+```toml
+[build]
+  publish = "."
+
+[[redirects]]
+  from = "/*"
+  to = "http://IP-DU-SERVEUR:8090/:splat"
+  status = 200
+  force = true
+  headers = {X-MyIntranet-Proxy = "une-longue-cle-secrete"}
+```
+
+Côté plugin : `"TrustProxyHeaders": true`, `"ProxySecret": "une-longue-cle-secrete"` et `PublicUrl` sur l'adresse
+Netlify. Sans la clé, une requête directe ne peut pas se faire passer pour un joueur (le code d'association est demandé).
 
 ## Commandes
 

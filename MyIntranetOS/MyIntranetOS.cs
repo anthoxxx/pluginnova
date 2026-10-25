@@ -283,6 +283,11 @@ namespace MyIntranetOS
         public int PinMaxAttempts = 5;
         public int PinLockoutSeconds = 300;
         public bool TrustProxyHeaders = false;
+        /// <summary>
+        /// Clé partagée avec le proxy (Netlify, nginx...) : l'adresse du joueur transmise par le proxy n'est acceptée
+        /// que si la requête porte l'en-tête X-MyIntranet-Proxy avec cette valeur. Vide = aucune vérification.
+        /// </summary>
+        public string ProxySecret = "";
         public bool SetAsBrowserHomePage = false;
         public bool ShowMoney = true;
 
@@ -1389,10 +1394,17 @@ namespace MyIntranetOS
 
         public HttpResponse Handle(HttpRequest req)
         {
-            if (Config.TrustProxyHeaders)
+            if (Config.TrustProxyHeaders && ProxyAuthorized(req))
             {
-                string forwarded = req.Header("X-Forwarded-For");
-                if (!string.IsNullOrEmpty(forwarded)) req.RemoteIp = IpUtils.Normalize(forwarded.Split(',')[0]);
+                // Netlify transmet l'adresse du joueur dans X-Nf-Client-Connection-Ip, les autres proxys dans X-Forwarded-For
+                string client = req.Header("X-Nf-Client-Connection-Ip");
+                if (string.IsNullOrEmpty(client)) client = req.Header("X-Forwarded-For")?.Split(',')[0];
+                if (!string.IsNullOrWhiteSpace(client)) req.RemoteIp = IpUtils.Normalize(client);
+            }
+            else if (!string.IsNullOrEmpty(Config.ProxySecret) && Config.TrustProxyHeaders)
+            {
+                // Requête directe (sans le proxy) : pas d'identification automatique, le code d'association reste possible
+                req.RemoteIp = null;
             }
 
             string path = req.Path;
@@ -1405,6 +1417,16 @@ namespace MyIntranetOS
             if (path.StartsWith("/sdk/")) return Embedded("Web/sdk/" + path.Substring(5));
             if (path.StartsWith("/apps/")) return AppFile(path.Substring(6));
             return HttpResponse.Error(404, "not_found");
+        }
+
+        private bool ProxyAuthorized(HttpRequest req)
+        {
+            if (string.IsNullOrEmpty(Config.ProxySecret)) return true;
+            string given = req.Header("X-MyIntranet-Proxy") ?? "";
+            if (given.Length != Config.ProxySecret.Length) return false;
+            int diff = 0;
+            for (int i = 0; i < given.Length; i++) diff |= given[i] ^ Config.ProxySecret[i];
+            return diff == 0;
         }
 
         private static HttpResponse Embedded(string name)
