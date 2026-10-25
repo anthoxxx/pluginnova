@@ -1,0 +1,10 @@
+{
+  "id": "reglages",
+  "name": "Réglages",
+  "description": "Apparence, écran d'accueil et sécurité de la tablette",
+  "version": "1.0.0",
+  "author": "MyIntranet OS",
+  "icon": "icon.svg",
+  "color": "#8e8e93",
+  "entry": "index.html"
+}

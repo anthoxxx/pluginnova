@@ -1,0 +1,115 @@
+/*
+ * MyIntranet OS — styles de base des applications
+ * <link rel="stylesheet" href="/sdk/myintranet.css">
+ * Variables : --mi-accent, --mi-bg, --mi-surface, --mi-surface-2, --mi-text, --mi-muted, --mi-border, --mi-radius
+ */
+:root {
+  --mi-accent: #0a84ff;
+  --mi-text-scale: 1;
+  --mi-radius: 14px;
+  --mi-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mi-bg: #000000;
+  --mi-surface: #1c1c1e;
+  --mi-surface-2: #2c2c2e;
+  --mi-text: #f5f5f7;
+  --mi-muted: #98989f;
+  --mi-border: rgba(255, 255, 255, 0.1);
+  --mi-danger: #ff453a;
+  --mi-success: #30d158;
+  --mi-warning: #ff9f0a;
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --mi-bg: #f2f2f7;
+  --mi-surface: #ffffff;
+  --mi-surface-2: #e5e5ea;
+  --mi-text: #1c1c1e;
+  --mi-muted: #6e6e73;
+  --mi-border: rgba(0, 0, 0, 0.1);
+  --mi-danger: #ff3b30;
+  --mi-success: #34c759;
+  --mi-warning: #ff9500;
+  color-scheme: light;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+html { font-size: calc(16px * var(--mi-text-scale)); }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--mi-bg);
+  color: var(--mi-text);
+  font-family: var(--mi-font);
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1 { font-size: 2rem; margin: 0.4em 0 0.6em; letter-spacing: -0.02em; }
+h2 { font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--mi-muted); margin: 1.6em 0 0.5em 0.9rem; }
+a { color: var(--mi-accent); }
+
+.mi-page { max-width: 760px; margin: 0 auto; padding: 1.2rem 1rem 3rem; }
+
+.mi-list {
+  background: var(--mi-surface);
+  border-radius: var(--mi-radius);
+  overflow: hidden;
+}
+.mi-row {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  min-height: 3rem;
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--mi-border);
+}
+.mi-row:last-child { border-bottom: none; }
+.mi-row > .mi-grow { flex: 1; min-width: 0; }
+.mi-muted { color: var(--mi-muted); }
+.mi-small { font-size: 0.85rem; }
+
+.mi-btn {
+  appearance: none;
+  border: none;
+  border-radius: 10px;
+  padding: 0.55rem 1rem;
+  font: inherit;
+  font-weight: 600;
+  background: var(--mi-accent);
+  color: #fff;
+  cursor: pointer;
+}
+.mi-btn:disabled { opacity: 0.5; cursor: default; }
+.mi-btn.secondary { background: var(--mi-surface-2); color: var(--mi-text); }
+.mi-btn.danger { background: var(--mi-danger); }
+
+.mi-input, select.mi-input {
+  font: inherit;
+  color: var(--mi-text);
+  background: var(--mi-surface-2);
+  border: 1px solid var(--mi-border);
+  border-radius: 10px;
+  padding: 0.5rem 0.7rem;
+  outline: none;
+}
+.mi-input:focus { border-color: var(--mi-accent); }
+
+/* Interrupteur */
+.mi-switch { position: relative; width: 51px; height: 31px; flex: none; }
+.mi-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+.mi-switch span {
+  position: absolute; inset: 0; border-radius: 31px; background: var(--mi-surface-2);
+  transition: background 0.2s; cursor: pointer;
+}
+.mi-switch span::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%;
+  background: #fff; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3); transition: transform 0.2s;
+}
+.mi-switch input:checked + span { background: var(--mi-success); }
+.mi-switch input:checked + span::after { transform: translateX(20px); }
+
+input[type="range"] { accent-color: var(--mi-accent); width: 100%; }

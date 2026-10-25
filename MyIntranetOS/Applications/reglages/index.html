@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="fr" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Réglages</title>
+  <link rel="stylesheet" href="/sdk/myintranet.css">
+  <style>
+    body { display: flex; height: 100vh; overflow: hidden; }
+    nav {
+      width: 290px; flex: none; overflow-y: auto;
+      padding: 1rem 0.8rem; background: var(--mi-bg);
+      border-right: 1px solid var(--mi-border);
+    }
+    nav h1 { margin: 0.2em 0.4rem 0.8em; }
+    .profile-card {
+      display: flex; gap: 0.8rem; align-items: center;
+      padding: 0.8rem; border-radius: var(--mi-radius); background: var(--mi-surface); margin-bottom: 1rem;
+    }
+    .avatar {
+      width: 52px; height: 52px; border-radius: 50%; flex: none;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 1.2rem; color: #fff;
+      background: linear-gradient(135deg, var(--mi-accent), #5e5ce6);
+    }
+    .nav-item {
+      display: flex; align-items: center; gap: 0.75rem; width: 100%;
+      border: none; background: transparent; color: var(--mi-text); font: inherit; text-align: left;
+      padding: 0.55rem 0.7rem; border-radius: 10px; cursor: pointer;
+    }
+    .nav-item:hover { background: var(--mi-surface); }
+    .nav-item.on { background: var(--mi-accent); color: #fff; }
+    .nav-ico {
+      width: 30px; height: 30px; border-radius: 8px; flex: none;
+      display: flex; align-items: center; justify-content: center; color: #fff; font-size: 0.95rem;
+    }
+    main { flex: 1; overflow-y: auto; }
+    .back { display: none; }
+    section[hidden] { display: none; }
+
+    .wallpapers { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 0.8rem; padding: 1rem; }
+    .wp {
+      aspect-ratio: 3 / 4; border-radius: 12px; cursor: pointer; border: 3px solid transparent; padding: 0;
+      position: relative; overflow: hidden;
+    }
+    .wp.on { border-color: var(--mi-accent); }
+    .wp span {
+      position: absolute; left: 0; right: 0; bottom: 0; padding: 0.3rem; font-size: 0.75rem; color: #fff;
+      background: linear-gradient(transparent, rgba(0, 0, 0, 0.55)); text-align: center;
+    }
+    .swatches { display: flex; flex-wrap: wrap; gap: 0.7rem; align-items: center; }
+    .swatch { width: 34px; height: 34px; border-radius: 50%; border: 3px solid transparent; cursor: pointer; padding: 0; box-shadow: inset 0 0 0 2px rgba(255,255,255,.3); }
+    .swatch.on { border-color: var(--mi-text); }
+    input[type="color"] { width: 40px; height: 34px; border: none; background: none; padding: 0; cursor: pointer; }
+    .seg { display: inline-grid; grid-auto-flow: column; gap: 4px; background: var(--mi-surface-2); padding: 3px; border-radius: 10px; }
+    .seg button { border: none; background: transparent; color: var(--mi-text); font: inherit; font-size: 0.9rem; padding: 0.35rem 0.8rem; border-radius: 8px; cursor: pointer; }
+    .seg button.on { background: var(--mi-surface); box-shadow: 0 1px 3px rgba(0,0,0,.2); font-weight: 600; }
+
+    .app-ico {
+      width: 36px; height: 36px; border-radius: 9px; flex: none; overflow: hidden;
+      display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700;
+    }
+    .app-ico img { width: 100%; height: 100%; object-fit: cover; }
+    .icon-btn {
+      width: 32px; height: 32px; border-radius: 8px; border: none; cursor: pointer;
+      background: var(--mi-surface-2); color: var(--mi-text); font: inherit; font-weight: 700;
+    }
+    .icon-btn:disabled { opacity: 0.3; cursor: default; }
+    .icon-btn.on { background: var(--mi-accent); color: #fff; }
+    .pin-form { display: grid; gap: 0.7rem; padding: 1rem; }
+    .pin-form input { letter-spacing: 0.5em; font-size: 1.2rem; text-align: center; max-width: 220px; }
+    .msg { min-height: 1.3em; font-size: 0.9rem; }
+    .msg.err { color: var(--mi-danger); }
+    .msg.ok { color: var(--mi-success); }
+    kbd { background: var(--mi-surface-2); padding: 0.1rem 0.4rem; border-radius: 6px; font-family: inherit; }
+
+    @media (max-width: 720px) {
+      nav { width: 100%; border-right: none; }
+      main { display: none; }
+      body.detail nav { display: none; }
+      body.detail main { display: block; }
+      .back { display: inline-flex; margin: 0.8rem 0 0 0.6rem; }
+    }
+  </style>
+</head>
+<body>
+  <nav>
+    <h1>Réglages</h1>
+    <div class="profile-card">
+      <div class="avatar" id="avatar">?</div>
+      <div>
+        <div style="font-weight:700" id="profile-name">…</div>
+        <div class="mi-muted mi-small" id="profile-sub"></div>
+      </div>
+    </div>
+    <div class="mi-list" id="nav-list" style="padding:0.3rem"></div>
+  </nav>
+
+  <main>
+    <button class="mi-btn secondary back" id="back" type="button">‹ Réglages</button>
+
+    <!-- Profil -->
+    <section class="mi-page" data-section="profil">
+      <h1>Mon personnage</h1>
+      <div class="mi-list" id="profile-rows"></div>
+      <p class="mi-muted mi-small" style="margin:0.8rem">Informations synchronisées avec votre session de jeu.</p>
+    </section>
+
+    <!-- Apparence -->
+    <section class="mi-page" data-section="apparence" hidden>
+      <h1>Apparence</h1>
+      <h2>Thème</h2>
+      <div class="mi-list">
+        <div class="mi-row"><span class="mi-grow">Mode</span>
+          <div class="seg" id="theme-seg">
+            <button type="button" data-v="auto">Auto</button><button type="button" data-v="light">Clair</button><button type="button" data-v="dark">Sombre</button>
+          </div>
+        </div>
+      </div>
+      <h2>Couleur d'accent</h2>
+      <div class="mi-list"><div class="mi-row"><div class="swatches" id="accents"></div></div></div>
+      <h2>Fond d'écran</h2>
+      <div class="mi-list">
+        <div class="wallpapers" id="wallpapers"></div>
+        <div class="mi-row">
+          <input class="mi-input mi-grow" id="wp-url" type="url" placeholder="https://… (image personnalisée)">
+          <button class="mi-btn" id="wp-apply" type="button">Appliquer</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Affichage -->
+    <section class="mi-page" data-section="affichage" hidden>
+      <h1>Affichage</h1>
+      <h2>Luminosité</h2>
+      <div class="mi-list"><div class="mi-row">☀︎<input type="range" id="brightness" min="20" max="100" class="mi-grow"><span id="brightness-v" class="mi-muted" style="width:3.5em;text-align:right"></span></div></div>
+      <h2>Taille du texte</h2>
+      <div class="mi-list"><div class="mi-row"><span class="mi-small">A</span><input type="range" id="textscale" min="80" max="140" step="5" class="mi-grow"><span style="font-size:1.3rem">A</span><span id="textscale-v" class="mi-muted" style="width:3.5em;text-align:right"></span></div></div>
+      <h2>Horloge</h2>
+      <div class="mi-list">
+        <div class="mi-row"><span class="mi-grow">Format 24 heures</span><label class="mi-switch"><input type="checkbox" id="use24h"><span></span></label></div>
+      </div>
+    </section>
+
+    <!-- Écran d'accueil -->
+    <section class="mi-page" data-section="accueil" hidden>
+      <h1>Écran d'accueil</h1>
+      <h2>Widgets</h2>
+      <div class="mi-list" id="widgets"></div>
+      <h2>Applications</h2>
+      <div class="mi-list" id="apps"></div>
+      <p class="mi-muted mi-small" style="margin:0.8rem">★ épingle l'application dans le dock (4 maximum). Astuce : sur l'écran d'accueil, un appui long sur une icône permet aussi de déplacer les applications.</p>
+    </section>
+
+    <!-- Sécurité -->
+    <section class="mi-page" data-section="securite" hidden>
+      <h1>Code et sécurité</h1>
+      <h2>Code de verrouillage</h2>
+      <div class="mi-list">
+        <div class="mi-row"><span class="mi-grow">État</span><span class="mi-muted" id="pin-state"></span></div>
+        <form class="pin-form" id="pin-form" autocomplete="off">
+          <label id="current-wrap">Code actuel<br><input class="mi-input" id="pin-current" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" type="password"></label>
+          <label>Nouveau code (4 chiffres)<br><input class="mi-input" id="pin-new" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" type="password"></label>
+          <label>Confirmer<br><input class="mi-input" id="pin-confirm" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" type="password"></label>
+          <div class="msg" id="pin-msg"></div>
+          <div style="display:flex;gap:0.6rem;flex-wrap:wrap">
+            <button class="mi-btn" type="submit" id="pin-save">Enregistrer le code</button>
+            <button class="mi-btn danger" type="button" id="pin-remove">Supprimer le code</button>
+          </div>
+        </form>
+      </div>
+      <p class="mi-muted mi-small" style="margin:0.8rem">Après plusieurs erreurs, la tablette se bloque temporairement. Code oublié ? Tapez <kbd id="reset-cmd">/tablette resetcode</kbd> dans le chat du jeu.</p>
+      <h2>Verrouillage automatique</h2>
+      <div class="mi-list">
+        <div class="mi-row"><span class="mi-grow">Après</span>
+          <select class="mi-input" id="autolock">
+            <option value="0">Jamais</option><option value="1">1 minute</option><option value="2">2 minutes</option>
+            <option value="5">5 minutes</option><option value="10">10 minutes</option><option value="15">15 minutes</option><option value="30">30 minutes</option>
+          </select>
+        </div>
+        <div class="mi-row"><span class="mi-grow">Verrouiller maintenant</span><button class="mi-btn secondary" id="lock-now" type="button">Verrouiller</button></div>
+      </div>
+    </section>
+
+    <!-- À propos -->
+    <section class="mi-page" data-section="apropos" hidden>
+      <h1>À propos</h1>
+      <div class="mi-list" id="about-rows"></div>
+      <h2>Réinitialisation</h2>
+      <div class="mi-list">
+        <div class="mi-row"><span class="mi-grow">Rétablir l'apparence et l'écran d'accueil par défaut</span><button class="mi-btn danger" id="reset" type="button">Réinitialiser</button></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/sdk/myintranet.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

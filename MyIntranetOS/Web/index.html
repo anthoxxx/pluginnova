@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="fr" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>MyIntranet OS</title>
+  <link rel="stylesheet" href="/sdk/myintranet.css">
+  <link rel="stylesheet" href="/os/os.css">
+</head>
+<body>
+  <div id="device">
+    <div id="wallpaper"></div>
+
+    <!-- Barre d'état -->
+    <header id="statusbar">
+      <div class="sb-left"><span id="sb-time">--:--</span></div>
+      <div class="sb-center" id="sb-server"></div>
+      <button class="sb-right" id="sb-cc" type="button" title="Centre de contrôle" aria-label="Centre de contrôle">
+        <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path fill="currentColor" d="M12 18.5a1.6 1.6 0 1 1 0 3.2 1.6 1.6 0 0 1 0-3.2Zm-4.6-3.1a6.6 6.6 0 0 1 9.2 0l-1.4 1.4a4.6 4.6 0 0 0-6.4 0l-1.4-1.4ZM4.3 12.3a11 11 0 0 1 15.4 0l-1.4 1.4a9 9 0 0 0-12.6 0l-1.4-1.4ZM1.2 9.2a15.4 15.4 0 0 1 21.6 0l-1.4 1.4a13.4 13.4 0 0 0-18.8 0L1.2 9.2Z"/></svg>
+        <span class="battery"><span></span></span>
+      </button>
+    </header>
+
+    <!-- Démarrage / identification -->
+    <section id="screen-boot" class="screen active">
+      <div class="boot-card">
+        <div class="boot-logo">
+          <svg viewBox="0 0 64 64" width="64" height="64" aria-hidden="true"><rect x="10" y="4" width="44" height="56" rx="9" fill="none" stroke="currentColor" stroke-width="4"/><circle cx="32" cy="51" r="3" fill="currentColor"/><path d="M22 20h20M22 28h20M22 36h12" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg>
+        </div>
+        <h1 id="boot-title">MyIntranet OS</h1>
+        <div id="boot-state">
+          <div class="spinner"></div>
+          <p class="mi-muted" id="boot-message">Connexion au serveur…</p>
+        </div>
+        <div id="pairing" hidden>
+          <p>Pour relier cette tablette à votre personnage, tapez dans le chat du jeu :</p>
+          <div class="pair-command"><code id="pair-command">/tablette 000000</code></div>
+          <div class="pair-code" id="pair-code" aria-label="Code d'association"></div>
+          <p class="mi-muted mi-small" id="pair-expire"></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Écran de verrouillage -->
+    <section id="screen-lock" class="screen">
+      <div class="lock-top">
+        <div class="lock-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M12 2a5 5 0 0 1 5 5v3h1a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h1V7a5 5 0 0 1 5-5Zm0 2a3 3 0 0 0-3 3v3h6V7a3 3 0 0 0-3-3Z"/></svg>
+        </div>
+        <div class="lock-date" id="lock-date"></div>
+        <div class="lock-time" id="lock-time">--:--</div>
+        <div class="lock-hello" id="lock-hello"></div>
+      </div>
+
+      <div class="lock-bottom">
+        <div id="lock-swipe" class="lock-swipe">
+          <button type="button" class="glass-btn" id="lock-open">Toucher pour déverrouiller</button>
+        </div>
+        <div id="lock-pin" class="lock-pin" hidden>
+          <p id="pin-label">Saisissez le code</p>
+          <div class="pin-dots" id="pin-dots"><i></i><i></i><i></i><i></i></div>
+          <p class="pin-error" id="pin-error"></p>
+          <div class="keypad" id="keypad">
+            <button type="button" data-k="1">1</button><button type="button" data-k="2">2<small>ABC</small></button><button type="button" data-k="3">3<small>DEF</small></button>
+            <button type="button" data-k="4">4<small>GHI</small></button><button type="button" data-k="5">5<small>JKL</small></button><button type="button" data-k="6">6<small>MNO</small></button>
+            <button type="button" data-k="7">7<small>PQRS</small></button><button type="button" data-k="8">8<small>TUV</small></button><button type="button" data-k="9">9<small>WXYZ</small></button>
+            <span></span><button type="button" data-k="0">0</button><button type="button" data-k="del" class="key-text">Effacer</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Écran d'accueil -->
+    <section id="screen-home" class="screen">
+      <div class="home-scroll">
+        <div class="widgets" id="widgets"></div>
+        <div class="edit-bar" id="edit-bar" hidden>
+          <span>Glissez les icônes pour les réorganiser · <b>–</b> pour masquer</span>
+          <button type="button" class="mi-btn" id="edit-done">Terminé</button>
+        </div>
+        <div class="app-grid" id="app-grid"></div>
+        <div class="hidden-apps" id="hidden-apps" hidden>
+          <h2>Applications masquées</h2>
+          <div class="app-grid small" id="hidden-grid"></div>
+        </div>
+      </div>
+      <nav class="dock" id="dock" aria-label="Dock"></nav>
+    </section>
+
+    <!-- Fenêtre d'application -->
+    <section id="app-window" aria-hidden="true">
+      <div class="app-bar">
+        <button type="button" class="app-bar-btn" id="app-home" aria-label="Accueil">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M15.4 4.6 8 12l7.4 7.4-1.4 1.4L5.2 12 14 3.2l1.4 1.4Z"/></svg>
+        </button>
+        <span class="app-bar-title" id="app-title"></span>
+        <button type="button" class="app-bar-btn" id="app-reload" aria-label="Recharger">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 4a8 8 0 0 1 7.4 5H17v2h6V5h-2v2.5A10 10 0 1 0 22 12h-2a8 8 0 1 1-8-8Z"/></svg>
+        </button>
+      </div>
+      <div class="app-frame-wrap"><iframe id="app-frame" title="Application" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"></iframe></div>
+    </section>
+
+    <!-- Centre de contrôle -->
+    <div id="cc-backdrop"></div>
+    <aside id="control-center" aria-hidden="true">
+      <div class="cc-grid">
+        <div class="cc-tile cc-wide">
+          <div class="cc-label">Thème</div>
+          <div class="cc-seg" id="cc-theme">
+            <button type="button" data-v="auto">Auto</button>
+            <button type="button" data-v="light">Clair</button>
+            <button type="button" data-v="dark">Sombre</button>
+          </div>
+        </div>
+        <div class="cc-tile cc-wide">
+          <div class="cc-label">Luminosité <span id="cc-brightness-v"></span></div>
+          <input type="range" id="cc-brightness" min="20" max="100" step="1">
+        </div>
+        <div class="cc-tile cc-wide">
+          <div class="cc-label">Taille du texte <span id="cc-text-v"></span></div>
+          <input type="range" id="cc-text" min="80" max="140" step="5">
+        </div>
+        <div class="cc-tile cc-wide">
+          <div class="cc-label">Couleur</div>
+          <div class="cc-swatches" id="cc-accents"></div>
+        </div>
+        <button type="button" class="cc-tile cc-action" id="cc-lock">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M12 2a5 5 0 0 1 5 5v3h1a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h1V7a5 5 0 0 1 5-5Zm0 2a3 3 0 0 0-3 3v3h6V7a3 3 0 0 0-3-3Z"/></svg>
+          <span>Verrouiller</span>
+        </button>
+        <button type="button" class="cc-tile cc-action" id="cc-edit">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M4 4h7v7H4V4Zm9 0h7v7h-7V4ZM4 13h7v7H4v-7Zm9 0h7v7h-7v-7Z"/></svg>
+          <span>Écran d'accueil</span>
+        </button>
+        <button type="button" class="cc-tile cc-action" id="cc-settings">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="m13.7 2 .5 2.6a8 8 0 0 1 1.9 1.1l2.5-.9 1.7 3-2 1.7a8 8 0 0 1 0 2.2l2 1.7-1.7 3-2.5-.9a8 8 0 0 1-1.9 1.1l-.5 2.6h-3.4l-.5-2.6a8 8 0 0 1-1.9-1.1l-2.5.9-1.7-3 2-1.7a8 8 0 0 1 0-2.2l-2-1.7 1.7-3 2.5.9a8 8 0 0 1 1.9-1.1l.5-2.6h3.4ZM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"/></svg>
+          <span>Réglages</span>
+        </button>
+      </div>
+    </aside>
+
+    <div id="toasts" aria-live="polite"></div>
+    <div id="dim"></div>
+  </div>
+
+  <script src="/sdk/myintranet.js"></script>
+  <script src="/os/os.js"></script>
+</body>
+</html>
