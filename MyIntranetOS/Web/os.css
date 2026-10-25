@@ -532,3 +532,26 @@ body { min-height: 0; user-select: none; -webkit-user-select: none; }
   .search-pill { bottom: 108px; }
   #sb-date { display: none; }
 }
+
+/* Écrans paysage peu hauts (PC en jeu) : widgets plus compacts pour laisser la place au dock */
+@media (min-width: 861px) and (max-height: 820px) {
+  .home-scroll { padding-top: 36px; }
+  .widgets { gap: 10px; }
+  .widget { padding: 11px 14px; }
+  .w-date .num { font-size: 2.1rem; }
+  .w-date .time { font-size: 1.25rem; margin-top: 8px; }
+  .n-row { padding: 4px 0; }
+  .news-item { padding: 4px 0; }
+  .news-item p { -webkit-line-clamp: 1; }
+}
+@media (min-width: 861px) and (max-height: 720px) {
+  .w-notifs .n-row:nth-of-type(n+4), .news-item:nth-of-type(n+3) { display: none; }
+  .w-news .news-item + .news-item { display: none; }
+}
+@media (max-width: 520px) {
+  .sb-status span { display: none; }
+  .sb-status { margin-right: 0; }
+}
+:root[data-theme="light"] .w-notifs .widget-head { color: #c25e00; }
+:root[data-theme="light"] .w-money .widget-head { color: #1a8a3f; }
+:root[data-theme="light"] .w-news .widget-head { color: #d70015; }
