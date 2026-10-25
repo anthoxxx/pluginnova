@@ -1,0 +1,11 @@
+{
+  "id": "birdy",
+  "name": "Birdy",
+  "description": "Le réseau social de la ville",
+  "version": "1.0.0",
+  "author": "MyIntranet OS",
+  "icon": "icon.svg",
+  "color": "#1d9bf0",
+  "entry": "index.html",
+  "order": 830
+}

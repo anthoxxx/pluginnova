@@ -27,7 +27,7 @@
        un seul fichier à installer, le reste est extrait au démarrage. -->
   <ItemGroup>
     <EmbeddedResource Include="Web\**\*" LogicalName="Web/%(RecursiveDir)%(Filename)%(Extension)" />
-    <EmbeddedResource Include="Applications\reglages\**\*" LogicalName="Apps/reglages/%(RecursiveDir)%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Applications\**\*" LogicalName="Apps/%(RecursiveDir)%(Filename)%(Extension)" />
     <EmbeddedResource Include="DOCUMENTATION.md" LogicalName="Docs/DOCUMENTATION.md" />
   </ItemGroup>
 

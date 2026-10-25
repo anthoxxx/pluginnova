@@ -1,0 +1,11 @@
+{
+  "id": "agriculteurs",
+  "name": "Agriculteurs",
+  "description": "Commander aux exploitations agricoles",
+  "version": "1.0.0",
+  "author": "MyIntranet OS",
+  "icon": "icon.svg",
+  "color": "#8e8e93",
+  "entry": "index.html",
+  "order": 90
+}

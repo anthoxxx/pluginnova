@@ -17,9 +17,11 @@
     { id: 'apropos', name: 'À propos', icon: 'ℹ', color: '#8e8e93' }
   ];
   var WIDGETS = [
-    { id: 'clock', name: 'Horloge' },
+    { id: 'clock', name: 'Date et heure' },
+    { id: 'wallet', name: 'Mon argent' },
+    { id: 'notifications', name: 'Notifications' },
+    { id: 'news', name: 'Actualités' },
     { id: 'profile', name: 'Identité' },
-    { id: 'wallet', name: 'Portefeuille' },
     { id: 'calendar', name: 'Calendrier' }
   ];
 
@@ -214,7 +216,7 @@
       star.addEventListener('click', function () {
         var dock = settings.dock.filter(function (x) { return x !== app.id; });
         if (!inDock) {
-          if (dock.length >= 4) { MI.notify('Dock plein', '4 applications maximum dans le dock.', 'warning'); return; }
+          if (dock.length >= 5) { MI.notify('Dock plein', '5 applications maximum dans le dock.', 'warning'); return; }
           dock.push(app.id);
         }
         save({ dock: dock });

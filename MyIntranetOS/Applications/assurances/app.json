@@ -1,0 +1,11 @@
+{
+  "id": "assurances",
+  "name": "Assurances",
+  "description": "Contacter les assureurs",
+  "version": "1.0.0",
+  "author": "MyIntranet OS",
+  "icon": "icon.svg",
+  "color": "#0a9fd0",
+  "entry": "index.html",
+  "order": 130
+}

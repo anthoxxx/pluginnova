@@ -1,0 +1,11 @@
+{
+  "id": "annuaire",
+  "name": "Annuaire",
+  "description": "Vos contacts et les entreprises de la ville",
+  "version": "1.0.0",
+  "author": "MyIntranet OS",
+  "icon": "icon.svg",
+  "color": "#8e8e93",
+  "entry": "index.html",
+  "order": 20
+}

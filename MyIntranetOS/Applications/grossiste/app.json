@@ -1,0 +1,11 @@
+{
+  "id": "grossiste",
+  "name": "Grossiste",
+  "description": "Passer commande aux transporteurs et grossistes",
+  "version": "1.0.0",
+  "author": "MyIntranet OS",
+  "icon": "icon.svg",
+  "color": "#2f3a46",
+  "entry": "index.html",
+  "order": 160
+}

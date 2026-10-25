@@ -1,0 +1,11 @@
+{
+  "id": "bonplan",
+  "name": "Le Bon Plan",
+  "description": "Petites annonces entre habitants",
+  "version": "1.0.0",
+  "author": "MyIntranet OS",
+  "icon": "icon.svg",
+  "color": "#ff6a00",
+  "entry": "index.html",
+  "order": 100
+}

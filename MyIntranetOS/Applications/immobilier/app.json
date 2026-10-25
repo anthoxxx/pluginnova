@@ -1,0 +1,11 @@
+{
+  "id": "immobilier",
+  "name": "Immobilier",
+  "description": "Vos terrains et les biens à vendre",
+  "version": "1.0.0",
+  "author": "MyIntranet OS",
+  "icon": "icon.svg",
+  "color": "#1b8f4c",
+  "entry": "index.html",
+  "order": 110
+}

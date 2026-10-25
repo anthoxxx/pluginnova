@@ -12,17 +12,22 @@
     me: null,
     apps: [],
     badges: {},
+    notifications: { unread: 0, items: [] },
+    seenNotif: null,
+    news: [],
+    online: true,
     currentApp: null,
     editing: false,
     lock: null,
     pin: '',
     lastActivity: Date.now(),
     authTimer: null,
-    meTimer: null
+    meTimer: null,
+    notifTimer: null
   };
 
   var SETTINGS_APP = 'reglages';
-  var DOCK_MAX = 4;
+  var DOCK_MAX = 5;
 
   // ------------------------------------------------------------------
   //  Utilitaires
@@ -49,14 +54,48 @@
     return d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
   }
 
+  function shortDate(d) {
+    return d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+  }
+
   function formatMoney(v) {
     if (v === null || v === undefined) return '—';
-    return Number(v).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+    return Number(v).toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' €';
+  }
+
+  function timeAgo(ts) {
+    var s = Math.max(0, Math.floor(Date.now() / 1000) - ts);
+    if (s < 60) return "à l'instant";
+    if (s < 3600) return 'il y a ' + Math.floor(s / 60) + ' min';
+    if (s < 86400) return 'il y a ' + Math.floor(s / 3600) + ' h';
+    var d = new Date(ts * 1000);
+    return d.toLocaleDateString('fr-FR', { weekday: 'long' }) + ' à ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
   }
 
   function initials(name) {
     return (name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(function (w) { return w[0].toUpperCase(); }).join('') || '?';
   }
+
+  function svg(path, size) {
+    var ns = 'http://www.w3.org/2000/svg';
+    var s = document.createElementNS(ns, 'svg');
+    s.setAttribute('viewBox', '0 0 24 24');
+    s.setAttribute('width', size || 15);
+    s.setAttribute('height', size || 15);
+    s.setAttribute('aria-hidden', 'true');
+    var p = document.createElementNS(ns, 'path');
+    p.setAttribute('fill', 'currentColor');
+    p.setAttribute('d', path);
+    s.appendChild(p);
+    return s;
+  }
+
+  var ICONS = {
+    bell: 'M12 2a6 6 0 0 1 6 6v4l2 3v1H4v-1l2-3V8a6 6 0 0 1 6-6Zm-2 16h4a2 2 0 0 1-4 0Z',
+    news: 'M4 4h13v14a2 2 0 0 0 2 2H6a2 2 0 0 1-2-2V4Zm3 3v3h7V7H7Zm0 5v2h7v-2H7Zm0 4v2h7v-2H7Zm12-8h2v10a2 2 0 0 1-2 2V8Z',
+    money: 'M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20Zm1 4h-2v1.1A3 3 0 0 0 11.6 13h.8a1 1 0 0 1 0 2H9v2h2v1h2v-1.1a3 3 0 0 0-.6-5.9h-.8a1 1 0 0 1 0-2H15V7h-2V6Z',
+    pin: 'M12 2a7 7 0 0 1 7 7c0 5-7 13-7 13S5 14 5 9a7 7 0 0 1 7-7Zm0 4.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Z'
+  };
 
   function showScreen(id) {
     device.scrollTop = 0;
@@ -67,7 +106,7 @@
     device.classList.toggle('blurred', id === 'screen-boot');
   }
 
-  function toast(title, message, type) {
+  function toast(title, message, type, onClick) {
     var t = el('div', 'toast ' + (type || 'info'));
     t.appendChild(el('span', 'dot'));
     var body = el('div');
@@ -76,8 +115,8 @@
     t.appendChild(body);
     $('toasts').appendChild(t);
     var remove = function () { t.classList.add('out'); setTimeout(function () { t.remove(); }, 300); };
-    t.addEventListener('click', remove);
-    setTimeout(remove, 4500);
+    t.addEventListener('click', function () { remove(); if (onClick) onClick(); });
+    setTimeout(remove, 5000);
     while ($('toasts').children.length > 4) $('toasts').firstChild.remove();
   }
 
@@ -86,6 +125,17 @@
     if (err && err.status === 401) { closeApp(true); boot(); return; }
     if (err && err.status === 423) { lockNow(false); return; }
     toast('Erreur', (err && err.message) || 'Action impossible', 'error');
+  }
+
+  function setOnline(on) {
+    state.online = on;
+    $('sb-status').classList.toggle('offline', !on);
+    $('sb-status').lastChild.textContent = on ? 'En ligne' : 'Hors ligne';
+    var w = document.querySelector('.w-money .state');
+    if (w) {
+      w.classList.toggle('offline', !on);
+      w.lastChild.textContent = on ? 'En ligne' : 'Hors ligne';
+    }
   }
 
   // ------------------------------------------------------------------
@@ -97,8 +147,6 @@
     MI.applyAppearance(s);
     $('wallpaper').style.background = MI.wallpaperCss(s.wallpaper);
     $('dim').style.opacity = String(((100 - (s.brightness || 100)) / 100) * 0.85);
-    var meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.content = s.accent;
   }
 
   var saveTimer = null;
@@ -138,10 +186,10 @@
     var now = new Date();
     var t = formatTime(now);
     $('sb-time').textContent = t;
+    $('sb-date').textContent = shortDate(now);
     $('lock-time').textContent = t;
     $('lock-date').textContent = formatDate(now);
-    var wc = document.querySelector('.w-clock .big');
-    if (wc) wc.textContent = t;
+    document.querySelectorAll('[data-clock]').forEach(function (n) { n.textContent = t; });
 
     // Verrouillage automatique
     var minutes = state.settings && state.settings.autoLockMinutes;
@@ -167,9 +215,14 @@
     document.querySelector('#boot-state .spinner').style.display = spinner === false ? 'none' : '';
   }
 
-  function boot() {
+  function stopTimers() {
     clearTimeout(state.authTimer);
     clearInterval(state.meTimer);
+    clearInterval(state.notifTimer);
+  }
+
+  function boot() {
+    stopTimers();
     showScreen('screen-boot');
     setBootMessage('Connexion au serveur…');
 
@@ -228,7 +281,7 @@
   var lockCountdown = null;
 
   function showLock() {
-    closeControlCenter();
+    closeOverlays();
     showScreen('screen-lock');
     state.pin = '';
     renderPinDots();
@@ -243,9 +296,10 @@
 
   function lockNow(callServer) {
     closeApp(true);
-    closeControlCenter();
+    closeOverlays();
     setEditing(false);
     clearInterval(state.meTimer);
+    clearInterval(state.notifTimer);
     var p = callServer === false ? Promise.resolve(state.lock) : MI.api('/lock/lock', { body: {} }).catch(function () { return state.lock; });
     p.then(function (lock) {
       if (lock) state.lock = lock;
@@ -314,7 +368,11 @@
 
   document.addEventListener('keydown', function (e) {
     if (!$('screen-lock').classList.contains('active')) {
-      if (e.key === 'Escape') { if (device.classList.contains('cc-open')) closeControlCenter(); else if (state.currentApp) closeApp(); else setEditing(false); }
+      if (e.key === 'Escape') {
+        if (!$('search').hidden || !$('notif-center').hidden || device.classList.contains('cc-open')) closeOverlays();
+        else if (state.currentApp) closeApp();
+        else setEditing(false);
+      }
       return;
     }
     if ($('lock-pin').hidden) {
@@ -348,14 +406,24 @@
       renderHome();
       activity();
       showScreen('screen-home');
+      setOnline(true);
       clearInterval(state.meTimer);
+      clearInterval(state.notifTimer);
       state.meTimer = setInterval(refreshMe, 30000);
+      state.notifTimer = setInterval(refreshNotifications, 15000);
+      refreshNotifications();
+      refreshNews();
     }).catch(handleApiError);
   }
 
   function refreshMe() {
-    MI.api('/me').then(function (me) { state.me = me; renderWidgets(); }).catch(function (err) {
+    MI.api('/me').then(function (me) {
+      state.me = me;
+      setOnline(true);
+      renderWidgets();
+    }).catch(function (err) {
       if (err.status === 401 || err.status === 423) handleApiError(err);
+      else setOnline(false);
     });
   }
 
@@ -363,9 +431,89 @@
     return MI.api('/apps').then(function (apps) { state.apps = apps; renderHome(); }).catch(handleApiError);
   }
 
+  /** Notifications du serveur : pastille, widget et bannière pour les nouvelles. */
+  function refreshNotifications() {
+    return MI.api('/notifications').then(function (n) {
+      var known = state.seenNotif;
+      state.notifications = n;
+      var maxId = n.items.reduce(function (m, x) { return Math.max(m, x.id); }, 0);
+      if (known !== null) {
+        n.items.filter(function (x) { return x.id > known && !x.read; }).reverse().forEach(function (x) {
+          toast(x.title, x.message, x.type, function () { openNotification(x); });
+        });
+      }
+      state.seenNotif = Math.max(known || 0, maxId);
+      setOnline(true);
+      renderBadge();
+      renderWidgets();
+      if (!$('notif-center').hidden) renderNotifCenter();
+    }).catch(function (err) {
+      if (err.status === 401 || err.status === 423) handleApiError(err);
+      else setOnline(false);
+    });
+  }
+
+  function refreshNews() {
+    if (!appById('actualites')) return;
+    MI.api('/news').then(function (n) { state.news = n.items || []; renderWidgets(); }).catch(function () { /* facultatif */ });
+  }
+
+  function renderBadge() {
+    var b = $('sb-badge');
+    var count = state.notifications.unread || 0;
+    b.hidden = count === 0;
+    b.textContent = count > 99 ? '99+' : String(count);
+  }
+
   function renderHome() {
     renderWidgets();
     renderApps();
+  }
+
+  function appIcon(appId) {
+    var app = appById(appId);
+    var box = el('span', 'n-icon');
+    if (!app) {
+      box.style.background = '#8e8e93';
+      box.appendChild(svg(ICONS.bell, 14));
+      return box;
+    }
+    box.style.background = app.color;
+    if (app.icon && app.icon.type === 'image') {
+      var img = el('img');
+      img.src = app.icon.value;
+      img.alt = '';
+      box.appendChild(img);
+    } else {
+      box.textContent = (app.icon && app.icon.value) || app.name[0];
+    }
+    return box;
+  }
+
+  function notifRow(n) {
+    var row = el('div', 'n-row' + (n.read ? '' : ' unread'));
+    row.appendChild(appIcon(n.app));
+    var t = el('div', 'n-text');
+    t.appendChild(el('b', null, n.title));
+    t.appendChild(el('span', null, n.message));
+    row.appendChild(t);
+    row.appendChild(el('span', 'n-time', timeAgo(n.createdAt)));
+    row.addEventListener('click', function (e) { e.stopPropagation(); openNotification(n); });
+    return row;
+  }
+
+  function openNotification(n) {
+    closeOverlays();
+    MI.api('/notifications/read', { body: { ids: [n.id] } }).then(refreshNotifications).catch(function () {});
+    var app = appById(n.app);
+    if (app) openApp(app);
+  }
+
+  function widgetHead(icon, text) {
+    var h = el('div', 'widget-head');
+    h.appendChild(svg(icon, 15));
+    h.appendChild(el('span', null, text));
+    return h;
   }
 
   function renderWidgets() {
@@ -378,10 +526,49 @@
     widgets.forEach(function (id) {
       var w;
       if (id === 'clock') {
-        w = el('div', 'widget w-clock');
-        w.appendChild(el('div', 'widget-title', 'Horloge'));
-        w.appendChild(el('div', 'big', formatTime(now)));
-        w.appendChild(el('div', 'sub', formatDate(now)));
+        w = el('div', 'widget w-date');
+        w.appendChild(el('div', 'day', now.toLocaleDateString('fr-FR', { weekday: 'long' })));
+        w.appendChild(el('div', 'num', String(now.getDate())));
+        w.appendChild(el('div', 'month', now.toLocaleDateString('fr-FR', { month: 'long' })));
+        var time = el('div', 'time', formatTime(now));
+        time.setAttribute('data-clock', '');
+        w.appendChild(time);
+        var place = el('div', 'place');
+        place.appendChild(svg(ICONS.pin, 12));
+        place.appendChild(el('span', null, (state.info && state.info.server) || 'Amboise'));
+        w.appendChild(place);
+      } else if (id === 'wallet') {
+        if (me.bank === null || me.bank === undefined) return;
+        w = el('div', 'widget w-money' + (appById('banque') ? ' clickable' : ''));
+        w.appendChild(widgetHead(ICONS.money, 'Mon argent'));
+        w.appendChild(el('div', 'amount', formatMoney(me.bank)));
+        w.appendChild(el('div', 'sub', 'Solde bancaire'));
+        if (me.money !== null && me.money !== undefined) w.appendChild(el('div', 'sub', formatMoney(me.money) + ' en espèces'));
+        var st = el('div', 'state' + (state.online ? '' : ' offline'));
+        st.appendChild(el('i'));
+        st.appendChild(el('span', null, state.online ? 'En ligne' : 'Hors ligne'));
+        w.appendChild(st);
+        if (appById('banque')) w.addEventListener('click', function () { openApp(appById('banque')); });
+      } else if (id === 'notifications') {
+        w = el('div', 'widget wide w-notifs clickable');
+        w.appendChild(widgetHead(ICONS.bell, 'Notifications'));
+        var items = state.notifications.items.slice(0, 3);
+        if (!items.length) w.appendChild(el('div', 'w-empty', 'Aucune notification.'));
+        items.forEach(function (n) { w.appendChild(notifRow(n)); });
+        w.addEventListener('click', openNotifCenter);
+      } else if (id === 'news') {
+        if (!appById('actualites')) return;
+        w = el('div', 'widget wide w-news clickable');
+        w.appendChild(widgetHead(ICONS.news, 'Actualités'));
+        if (!state.news.length) w.appendChild(el('div', 'w-empty', 'Aucun article pour le moment.'));
+        state.news.slice(0, 2).forEach(function (a) {
+          var item = el('div', 'news-item');
+          item.appendChild(el('div', 'outlet', a.outlet));
+          item.appendChild(el('b', null, a.title));
+          item.appendChild(el('p', null, a.body));
+          w.appendChild(item);
+        });
+        w.addEventListener('click', function () { openApp(appById('actualites')); });
       } else if (id === 'profile') {
         w = el('div', 'widget w-profile');
         w.appendChild(el('div', 'widget-title', 'Identité'));
@@ -400,21 +587,6 @@
         lvl.appendChild(el('span', 'mi-small', (me.xp || 0) + ' XP'));
         lvl.style.marginTop = 'auto';
         w.appendChild(lvl);
-        var bar = el('div', 'xp-bar');
-        var fill = el('span');
-        fill.style.width = Math.min(100, ((me.xp || 0) % 100)) + '%';
-        bar.appendChild(fill);
-        w.appendChild(bar);
-      } else if (id === 'wallet') {
-        if (me.money === null && me.bank === null) return;
-        w = el('div', 'widget w-wallet');
-        w.appendChild(el('div', 'widget-title', 'Portefeuille'));
-        [['Espèces', me.money], ['Banque', me.bank]].forEach(function (row) {
-          var r = el('div', 'w-row');
-          r.appendChild(el('span', 'mi-small', row[0]));
-          r.appendChild(el('span', 'amount', formatMoney(row[1])));
-          w.appendChild(r);
-        });
       } else if (id === 'calendar') {
         w = el('div', 'widget w-calendar');
         w.appendChild(el('div', 'day', now.toLocaleDateString('fr-FR', { weekday: 'long' })));
@@ -472,7 +644,7 @@
 
     b.addEventListener('click', function () {
       if (state.editing) return;
-      openApp(app, b);
+      openApp(app, null, b);
     });
     attachLongPress(b);
     if (where !== 'hidden') attachDrag(b, where);
@@ -614,20 +786,33 @@
   //  Applications
   // ------------------------------------------------------------------
 
-  function openApp(app, fromNode) {
+  function appUrl(app, params) {
+    if (!params || !Object.keys(params).length) return app.url;
+    var q = Object.keys(params).map(function (k) { return encodeURIComponent(k) + '=' + encodeURIComponent(params[k]); }).join('&');
+    return app.url + (app.url.indexOf('?') < 0 ? '?' : '&') + q;
+  }
+
+  function loadFrame(app, params) {
+    var frame = $('app-frame');
+    frame.setAttribute('data-app', app.id);
+    frame.setAttribute('data-params', JSON.stringify(params || {}));
+    frame.src = appUrl(app, params);
+  }
+
+  function openApp(app, params, fromNode) {
     if (!app) return;
-    closeControlCenter();
+    closeOverlays();
     var win = $('app-window');
     if (fromNode) {
       var r = fromNode.getBoundingClientRect();
       win.style.setProperty('--origin', (r.left + r.width / 2) + 'px ' + (r.top + r.height / 2 - 30) + 'px');
     }
     state.currentApp = app;
+    state.badges[app.id] = 0;
     $('app-title').textContent = app.name;
-    if ($('app-frame').getAttribute('data-app') !== app.id) {
-      $('app-frame').setAttribute('data-app', app.id);
-      $('app-frame').src = app.url;
-    }
+    var frame = $('app-frame');
+    var sameParams = frame.getAttribute('data-params') === JSON.stringify(params || {});
+    if (frame.getAttribute('data-app') !== app.id || (params && !sameParams)) loadFrame(app, params);
     win.classList.add('open');
     win.setAttribute('aria-hidden', 'false');
     device.classList.add('app-open');
@@ -645,14 +830,20 @@
     setTimeout(function () {
       if (!state.currentApp && unload !== false) {
         frame.removeAttribute('data-app');
+        frame.removeAttribute('data-params');
         frame.src = 'about:blank';
       }
     }, unload ? 0 : 320);
+    if ($('screen-home').classList.contains('active')) {
+      renderApps();
+      refreshNotifications();
+      refreshNews();
+    }
   }
 
   $('app-home').addEventListener('click', function () { closeApp(); });
   $('app-reload').addEventListener('click', function () {
-    if (state.currentApp) $('app-frame').src = state.currentApp.url;
+    if (state.currentApp) loadFrame(state.currentApp, JSON.parse($('app-frame').getAttribute('data-params') || '{}'));
   });
 
   function broadcastSettings() {
@@ -684,7 +875,11 @@
 
     switch (msg.type) {
       case 'context':
-        reply({ app: app, settings: state.settings, me: state.me, os: { name: state.info && state.info.name, version: state.info && state.info.version, server: state.info && state.info.server } });
+        reply({
+          app: app, settings: state.settings, me: state.me,
+          params: JSON.parse($('app-frame').getAttribute('data-params') || '{}'),
+          os: { name: state.info && state.info.name, version: state.info && state.info.version, server: state.info && state.info.server }
+        });
         break;
       case 'notify':
         toast(String(p.title || app.name).slice(0, 80), p.message ? String(p.message).slice(0, 300) : '', p.type);
@@ -694,14 +889,18 @@
         break;
       case 'open-app':
         var target = appById(p.id);
-        if (target) openApp(target); else toast(app.name, 'Application introuvable : ' + p.id, 'warning');
+        if (target) openApp(target, p.params || null); else toast(app.name, 'Application introuvable : ' + p.id, 'warning');
         break;
       case 'badge':
         state.badges[app.id] = Math.max(0, p.count | 0);
-        renderApps();
         break;
       case 'lock':
         lockNow(true);
+        break;
+      case 'refresh':
+        refreshMe();
+        refreshNotifications();
+        refreshNews();
         break;
       case 'settings-updated':
         state.settings = p;
@@ -720,11 +919,96 @@
   });
 
   // ------------------------------------------------------------------
+  //  Recherche et centre de notifications
+  // ------------------------------------------------------------------
+
+  function closeOverlays() {
+    $('search').hidden = true;
+    $('notif-center').hidden = true;
+    closeControlCenter();
+  }
+
+  function normalize(s) {
+    return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  }
+
+  function renderSearch() {
+    var q = normalize($('search-input').value.trim());
+    var list = $('search-results');
+    list.textContent = '';
+    var results = state.apps.filter(function (a) {
+      return !q || normalize(a.name).indexOf(q) >= 0 || normalize(a.description).indexOf(q) >= 0;
+    });
+    if (!results.length) list.appendChild(el('div', 'w-empty', 'Aucun résultat.'));
+    results.forEach(function (a) {
+      var row = el('button', 's-row');
+      row.type = 'button';
+      row.appendChild(appIcon(a.id));
+      var t = el('div');
+      t.appendChild(el('b', null, a.name));
+      if (a.description) t.appendChild(el('small', null, a.description));
+      row.appendChild(t);
+      row.addEventListener('click', function () { openApp(a); });
+      list.appendChild(row);
+    });
+  }
+
+  $('search-open').addEventListener('click', function () {
+    closeOverlays();
+    $('search').hidden = false;
+    $('search-input').value = '';
+    renderSearch();
+    setTimeout(function () { $('search-input').focus(); }, 30);
+  });
+  $('search-input').addEventListener('input', renderSearch);
+  $('search-input').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') {
+      var first = $('search-results').querySelector('.s-row');
+      if (first) first.click();
+    }
+  });
+  $('search-close').addEventListener('click', closeOverlays);
+  $('search').addEventListener('click', function (e) { if (e.target === $('search')) closeOverlays(); });
+
+  function renderNotifCenter() {
+    var list = $('nc-list');
+    list.textContent = '';
+    if (!state.notifications.items.length) list.appendChild(el('div', 'w-empty', 'Aucune notification.'));
+    state.notifications.items.forEach(function (n) { list.appendChild(notifRow(n)); });
+  }
+
+  function openNotifCenter() {
+    closeOverlays();
+    renderNotifCenter();
+    $('notif-center').hidden = false;
+    if (state.notifications.unread > 0) {
+      MI.api('/notifications/read', { body: {} }).then(function () {
+        state.notifications.unread = 0;
+        renderBadge();
+      }).catch(function () {});
+    }
+  }
+
+  $('sb-badge').addEventListener('click', function (e) { e.stopPropagation(); openNotifCenter(); });
+  $('nc-close').addEventListener('click', closeOverlays);
+  $('notif-center').addEventListener('click', function (e) { if (e.target === $('notif-center')) closeOverlays(); });
+  $('nc-clear').addEventListener('click', function () {
+    MI.api('/notifications/clear', { body: {} }).then(function () {
+      state.notifications = { unread: 0, items: [] };
+      renderBadge();
+      renderNotifCenter();
+      renderWidgets();
+    }).catch(handleApiError);
+  });
+
+  // ------------------------------------------------------------------
   //  Centre de contrôle
   // ------------------------------------------------------------------
 
   function openControlCenter() {
     if (!$('screen-home').classList.contains('active')) return;
+    $('search').hidden = true;
+    $('notif-center').hidden = true;
     syncControlCenter();
     device.classList.add('cc-open');
     $('control-center').setAttribute('aria-hidden', 'false');

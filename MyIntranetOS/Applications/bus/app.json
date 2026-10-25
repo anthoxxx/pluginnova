@@ -1,0 +1,11 @@
+{
+  "id": "bus",
+  "name": "Bus",
+  "description": "Signaler un arrêt aux chauffeurs en service",
+  "version": "1.0.0",
+  "author": "MyIntranet OS",
+  "icon": "icon.svg",
+  "color": "#0a8fa8",
+  "entry": "index.html",
+  "order": 60
+}

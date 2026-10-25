@@ -13,9 +13,14 @@
 
     <!-- Barre d'état -->
     <header id="statusbar">
-      <div class="sb-left"><span id="sb-time">--:--</span></div>
+      <div class="sb-left">
+        <span id="sb-time">--:--</span>
+        <span id="sb-date"></span>
+        <button type="button" class="sb-badge" id="sb-badge" hidden title="Notifications" aria-label="Notifications">0</button>
+      </div>
       <div class="sb-center" id="sb-server"></div>
       <button class="sb-right" id="sb-cc" type="button" title="Centre de contrôle" aria-label="Centre de contrôle">
+        <span class="sb-status" id="sb-status"><i></i><span>En ligne</span></span>
         <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path fill="currentColor" d="M12 18.5a1.6 1.6 0 1 1 0 3.2 1.6 1.6 0 0 1 0-3.2Zm-4.6-3.1a6.6 6.6 0 0 1 9.2 0l-1.4 1.4a4.6 4.6 0 0 0-6.4 0l-1.4-1.4ZM4.3 12.3a11 11 0 0 1 15.4 0l-1.4 1.4a9 9 0 0 0-12.6 0l-1.4-1.4ZM1.2 9.2a15.4 15.4 0 0 1 21.6 0l-1.4 1.4a13.4 13.4 0 0 0-18.8 0L1.2 9.2Z"/></svg>
         <span class="battery"><span></span></span>
       </button>
@@ -73,17 +78,25 @@
     <!-- Écran d'accueil -->
     <section id="screen-home" class="screen">
       <div class="home-scroll">
-        <div class="widgets" id="widgets"></div>
         <div class="edit-bar" id="edit-bar" hidden>
           <span>Glissez les icônes pour les réorganiser · <b>–</b> pour masquer</span>
           <button type="button" class="mi-btn" id="edit-done">Terminé</button>
         </div>
-        <div class="app-grid" id="app-grid"></div>
-        <div class="hidden-apps" id="hidden-apps" hidden>
-          <h2>Applications masquées</h2>
-          <div class="app-grid small" id="hidden-grid"></div>
+        <div class="home-layout">
+          <div class="widgets" id="widgets"></div>
+          <div class="apps-col">
+            <div class="app-grid" id="app-grid"></div>
+            <div class="hidden-apps" id="hidden-apps" hidden>
+              <h2>Applications masquées</h2>
+              <div class="app-grid small" id="hidden-grid"></div>
+            </div>
+          </div>
         </div>
       </div>
+      <button type="button" class="search-pill" id="search-open">
+        <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M10 3a7 7 0 0 1 5.6 11.2l5.1 5.1-1.4 1.4-5.1-5.1A7 7 0 1 1 10 3Zm0 2a5 5 0 1 0 0 10 5 5 0 0 0 0-10Z"/></svg>
+        Rechercher
+      </button>
       <nav class="dock" id="dock" aria-label="Dock"></nav>
     </section>
 
@@ -139,6 +152,32 @@
         </button>
       </div>
     </aside>
+
+    <!-- Recherche -->
+    <div id="search" class="overlay" hidden>
+      <div class="overlay-card">
+        <div class="search-field">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M10 3a7 7 0 0 1 5.6 11.2l5.1 5.1-1.4 1.4-5.1-5.1A7 7 0 1 1 10 3Zm0 2a5 5 0 1 0 0 10 5 5 0 0 0 0-10Z"/></svg>
+          <input id="search-input" type="search" placeholder="Rechercher une application" autocomplete="off">
+          <button type="button" class="link-btn" id="search-close">Annuler</button>
+        </div>
+        <div class="search-results" id="search-results"></div>
+      </div>
+    </div>
+
+    <!-- Centre de notifications -->
+    <div id="notif-center" class="overlay" hidden>
+      <div class="overlay-card">
+        <div class="nc-head">
+          <b>Notifications</b>
+          <span>
+            <button type="button" class="link-btn" id="nc-clear">Effacer</button>
+            <button type="button" class="link-btn" id="nc-close">Fermer</button>
+          </span>
+        </div>
+        <div class="nc-list" id="nc-list"></div>
+      </div>
+    </div>
 
     <div id="toasts" aria-live="polite"></div>
     <div id="dim"></div>

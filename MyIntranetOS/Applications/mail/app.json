@@ -1,0 +1,11 @@
+{
+  "id": "mail",
+  "name": "Mail",
+  "description": "Boîtes mail du jeu (entreprises, services)",
+  "version": "1.0.0",
+  "author": "MyIntranet OS",
+  "icon": "icon.svg",
+  "color": "#0a6cff",
+  "entry": "index.html",
+  "order": 10
+}

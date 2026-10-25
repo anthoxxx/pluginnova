@@ -7,6 +7,31 @@ Chaque joueur a sa propre tablette, liée à son **compte Steam et à son person
 sauvegardées dans une base **SQLite**. Le plugin héberge son propre serveur web : **aucune dépendance externe**
 (ni ModKit, ni AAMenu, ni serveur web à installer).
 
+## Applications intégrées (reliées au jeu)
+
+| Application | Ce qu'elle fait en jeu |
+|---|---|
+| **Portefeuille** | Argent en banque et en espèces, carte d'identité, permis et points, entreprise. |
+| **Banque** | Solde réel, historique de tous les mouvements bancaires du jeu, **virements entre joueurs** (débit et crédit réels ; crédité à la connexion si le bénéficiaire est hors ligne). |
+| **Messages** | Les **SMS du téléphone du jeu** : lecture et envoi, le téléphone du destinataire est mis à jour en direct. |
+| **Annuaire** | Les **contacts du téléphone du jeu** (ajout, suppression) et toutes les entreprises de la ville. |
+| **Mail** | Les **boîtes mail du jeu** (domaines d'entreprises et services) auxquelles le personnage a accès : lire, écrire, répondre, supprimer. |
+| **Actualités** | Articles publiés par la presse / les services publics autorisés / le staff, affichés en widget. |
+| **Birdy** | Réseau social de la ville : messages de 280 caractères, j'aime. |
+| **Véhicules** | Véhicules du personnage (propriétaire ou co-propriétaire), carburant, **point GPS en jeu** sur le véhicule. |
+| **Immobilier** | Terrains du personnage et biens à vendre / louer, avec **point GPS en jeu**. |
+| **Le Bon Plan** | Petites annonces entre habitants (expiration automatique), contact par SMS. |
+| **Taxi, Bus, Blue Eats, Santé, Assurances, Avocats, Grossiste, Agriculteurs, Service Public, Dépannage** | Demande envoyée **aux joueurs en service** de l'entreprise concernée (notification en jeu). Le prestataire accepte depuis sa tablette et reçoit un **point GPS** vers le demandeur. |
+| **Jeux** | 2048 et Serpent (record par personnage). |
+| **Radio** | Stations configurables. |
+| **Réglages** | Apparence, écran d'accueil, code et sécurité. |
+
+Les notifications (virement reçu, demande acceptée, nouveau mail…) s'affichent **en jeu** et dans la tablette
+(pastille dans la barre d'état, widget, centre de notifications).
+
+L'administrateur peut supprimer n'importe quelle application intégrée (sauf Réglages) : il suffit d'effacer son
+dossier dans `Applications/`, elle ne sera pas réinstallée.
+
 ## Fonctionnalités
 
 - 🖥️ Écran d'accueil, widgets (horloge, identité, portefeuille, calendrier), dock (4 apps), centre de contrôle.
@@ -56,6 +81,33 @@ sauvegardées dans une base **SQLite**. Le plugin héberge son propre serveur we
 | `TrustProxyHeaders` | `false` | `true` uniquement derrière un reverse proxy (utilise `X-Forwarded-For`). |
 | `SetAsBrowserHomePage` | `false` | Définit `PublicUrl` comme page d'accueil du navigateur en jeu. |
 | `ShowMoney` | `true` | Expose l'argent et la banque aux applications. |
+| `BankTransfersEnabled` | `true` | Autorise les virements depuis l'application Banque. |
+| `BankTransferMax` | `50000` | Montant maximum d'un virement. |
+| `BankTransferCooldownSeconds` | `5` | Délai minimum entre deux virements d'un même joueur. |
+| `NewsPublisherBizIds` | `[]` | Entreprises (identifiants) autorisées à publier des actualités. |
+| `NewsPublisherActivities` | `["LawEnforcement"]` | Activités autorisées à publier (le staff peut toujours publier). |
+| `NewsNotifyPlayers` | `true` | Notifie les joueurs connectés à chaque nouvel article. |
+| `AdsLifetimeDays` / `AdsMaxPerPlayer` | `7` / `5` | Durée de vie et nombre maximum d'annonces Le Bon Plan. |
+| `ServiceRequestLifetimeMinutes` | `30` | Une demande de service non traitée expire après ce délai. |
+| `Services` | voir ci-dessous | Services joignables (Taxi, Santé…). |
+| `RadioStations` | 4 stations | Liste `{ "Name", "Url" }` de flux audio. |
+
+### Services
+
+Chaque service relie une application aux joueurs d'entreprises précises :
+
+```json
+{ "Id": "taxi", "Name": "Taxi", "Activities": ["Taxi"], "BizIds": [], "RequireOnDuty": true,
+  "RequestLabel": "Commander un taxi", "Placeholder": "Destination, nombre de passagers…" }
+```
+
+- `Activities` : activités d'entreprise du jeu : `LawEnforcement`, `Medical`, `Mecanic`, `Bus`, `Trash`, `Taxi`,
+  `Transport`, `Hairdresser`, `Chef`, `Electrician`, `Fourriere`, `DIR`, `Agricole`.
+- `BizIds` : identifiants d'entreprises (ex. le cabinet d'avocats, l'assureur, la mairie).
+- `RequireOnDuty` : seuls les joueurs **en service** reçoivent les demandes.
+
+Par défaut, **Assurances** et **Avocats** n'ont aucune activité correspondante dans le jeu : renseignez leurs
+`BizIds`, sinon l'application affiche « service non configuré ».
 
 ## Commandes
 
@@ -66,6 +118,13 @@ sauvegardées dans une base **SQLite**. Le plugin héberge son propre serveur we
 | `/tablette resetcode` | Supprime votre code de verrouillage (code oublié). |
 | `/tablette deconnexion` | Ferme toutes vos sessions de tablette. |
 | `/tablette reload` | (staff) Recharge les applications. |
+
+## Fonctionnement technique
+
+Le serveur web tourne sur son propre thread. Toute action sur le jeu (argent, SMS, GPS, notifications, lecture des
+véhicules et terrains) est exécutée sur le **thread principal du jeu** via une file vidée à chaque image, puis le
+résultat est renvoyé à la tablette. Les SMS, contacts et mails utilisent les tables et méthodes du jeu
+(`LifeDB`, `Nova.SendMail`), ils sont donc partagés avec le téléphone et le PC en jeu.
 
 ## Créer des applications
 

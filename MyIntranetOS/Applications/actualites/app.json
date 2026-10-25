@@ -1,0 +1,11 @@
+{
+  "id": "actualites",
+  "name": "Actualités",
+  "description": "Communiqués de la mairie, de la gendarmerie et de la presse",
+  "version": "1.0.0",
+  "author": "MyIntranet OS",
+  "icon": "icon.svg",
+  "color": "#8e8e93",
+  "entry": "index.html",
+  "order": 30
+}

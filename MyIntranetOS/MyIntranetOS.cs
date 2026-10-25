@@ -39,6 +39,8 @@ namespace MyIntranetOS
         internal PlayerDirectory Players;
         internal SessionManager Sessions;
         internal AppRegistry Apps;
+        internal IGameBridge Game;
+        internal Features Features;
 
         private HttpServer http;
         private bool homePageApplied;
@@ -67,6 +69,10 @@ namespace MyIntranetOS
                 Apps = new AppRegistry(Path.Combine(DataDir, "Applications"));
                 Apps.Reload();
 
+                MainThread.Init(Nova.man);
+                Game = new NovaGameBridge();
+                Features = new Features(this, Game);
+
                 http = new HttpServer(Config.BindAddress, Config.Port, new Router(this).Handle);
                 http.Start();
             }
@@ -78,7 +84,7 @@ namespace MyIntranetOS
 
             Nova.server.OnMinutePassedEvent += RefreshAllPlayers;
             Nova.server.OnPlayerMoneyEvent += OnMoneyChanged;
-            Nova.server.OnPlayerBankEvent += OnMoneyChanged;
+            Nova.server.OnPlayerBankEvent += OnBankChanged;
 
             RegisterCommands();
             TryApplyBrowserHomePage();
@@ -96,6 +102,30 @@ namespace MyIntranetOS
             // Un changement de personnage invalide les sessions de l'ancien personnage
             Sessions.RevokeOtherCharacters(player.steamId, character.Id);
             TryApplyBrowserHomePage();
+            DeliverPendingCredits(player);
+        }
+
+        /// <summary>Crédite les virements reçus pendant que le joueur était hors ligne.</summary>
+        private void DeliverPendingCredits(Player player)
+        {
+            try
+            {
+                foreach (PendingCredit credit in Features.TakePendingCredits(player.character.Id))
+                {
+                    player.AddBankMoney(credit.Amount, credit.Reason);
+                    player.Notify(Config.TabletName, $"{credit.Reason} : +{credit.Amount:N2} €", NotificationManager.Type.Success, 8f);
+                }
+            }
+            catch (Exception e)
+            {
+                Log.Error($"virements en attente non crédités : {e}");
+            }
+        }
+
+        private void OnBankChanged(Player player, double amount, string reason)
+        {
+            Players.Update(player);
+            if (player?.character != null) Features.LogBank(player.character.Id, amount, reason);
         }
 
         public override void OnPlayerDisconnect(NetworkConnection conn)
@@ -233,6 +263,42 @@ namespace MyIntranetOS
         public bool SetAsBrowserHomePage = false;
         public bool ShowMoney = true;
 
+        public bool BankTransfersEnabled = true;
+        public double BankTransferMax = 50000;
+        public int BankTransferCooldownSeconds = 5;
+        public int[] NewsPublisherBizIds = new int[0];
+        public string[] NewsPublisherActivities = { "LawEnforcement" };
+        public bool NewsNotifyPlayers = true;
+        public int AdsLifetimeDays = 7;
+        public int AdsMaxPerPlayer = 5;
+        public int ServiceRequestLifetimeMinutes = 30;
+
+        /// <summary>
+        /// Services joignables depuis la tablette. Activities : None, LawEnforcement, Medical, Mecanic, Bus, Trash,
+        /// Taxi, Transport, Hairdresser, Chef, Electrician, Fourriere, DIR, Agricole. BizIds : identifiants d'entreprises.
+        /// </summary>
+        public List<ServiceConfig> Services = new List<ServiceConfig>
+        {
+            new ServiceConfig { Id = "taxi", Name = "Taxi", Activities = new[] { "Taxi" }, RequestLabel = "Commander un taxi", Placeholder = "Destination, nombre de passagers…" },
+            new ServiceConfig { Id = "bus", Name = "Bus", Activities = new[] { "Bus" }, RequestLabel = "Signaler un arrêt", Placeholder = "Arrêt, destination…" },
+            new ServiceConfig { Id = "livraison", Name = "Blue Eats", Activities = new[] { "Chef" }, RequestLabel = "Commander", Placeholder = "Votre commande…" },
+            new ServiceConfig { Id = "sante", Name = "Santé", Activities = new[] { "Medical" }, RequireOnDuty = false, RequestLabel = "Appeler les secours", Placeholder = "Que se passe-t-il ?" },
+            new ServiceConfig { Id = "assurances", Name = "Assurances", RequireOnDuty = false, RequestLabel = "Être rappelé", Placeholder = "Votre besoin (auto, habitation, santé…)" },
+            new ServiceConfig { Id = "avocats", Name = "Avocats", RequireOnDuty = false, RequestLabel = "Prendre rendez-vous", Placeholder = "Votre affaire…" },
+            new ServiceConfig { Id = "grossiste", Name = "Grossiste", Activities = new[] { "Transport" }, RequireOnDuty = false, RequestLabel = "Passer commande", Placeholder = "Produits et quantités…" },
+            new ServiceConfig { Id = "agriculteurs", Name = "Agriculteurs", Activities = new[] { "Agricole" }, RequireOnDuty = false, RequestLabel = "Passer commande", Placeholder = "Produits et quantités…" },
+            new ServiceConfig { Id = "servicepublic", Name = "Service Public", Activities = new[] { "LawEnforcement" }, RequireOnDuty = false, RequestLabel = "Faire une démarche", Placeholder = "Votre démarche (papiers, plainte, rendez-vous…)" },
+            new ServiceConfig { Id = "depannage", Name = "Dépannage", Activities = new[] { "Mecanic", "Fourriere" }, RequestLabel = "Demander un dépanneur", Placeholder = "Véhicule, panne…" }
+        };
+
+        public List<RadioStation> RadioStations = new List<RadioStation>
+        {
+            new RadioStation { Name = "France Inter", Url = "https://icecast.radiofrance.fr/franceinter-midfi.mp3" },
+            new RadioStation { Name = "franceinfo", Url = "https://icecast.radiofrance.fr/franceinfo-midfi.mp3" },
+            new RadioStation { Name = "FIP", Url = "https://icecast.radiofrance.fr/fip-midfi.mp3" },
+            new RadioStation { Name = "Mouv'", Url = "https://icecast.radiofrance.fr/mouv-midfi.mp3" }
+        };
+
         [JsonIgnore]
         public string DisplayUrl => string.IsNullOrWhiteSpace(PublicUrl) ? $"http://<ip-du-serveur>:{Port}/" : PublicUrl.Trim();
 
@@ -242,7 +308,9 @@ namespace MyIntranetOS
             IntranetConfig config = null;
             if (File.Exists(path))
             {
-                try { config = JsonConvert.DeserializeObject<IntranetConfig>(File.ReadAllText(path)); }
+                // Replace : les listes du fichier remplacent les valeurs par défaut au lieu de s'y ajouter
+                JsonSerializerSettings settings = new JsonSerializerSettings { ObjectCreationHandling = ObjectCreationHandling.Replace };
+                try { config = JsonConvert.DeserializeObject<IntranetConfig>(File.ReadAllText(path), settings); }
                 catch (Exception e) { Log.Error($"configuration.json invalide, valeurs par défaut utilisées : {e.Message}"); }
             }
             bool created = config == null && !File.Exists(path);
@@ -270,22 +338,77 @@ namespace MyIntranetOS
         }
     }
 
-    /// <summary>Copie l'application Réglages et la documentation embarquées dans le dossier du plugin.</summary>
+    /// <summary>
+    /// Installe les applications intégrées et la documentation embarquées dans la DLL.
+    /// Réglages est toujours réinstallée. Les autres applications sont installées une fois puis mises à jour
+    /// quand leur version change ; une application supprimée par l'administrateur n'est pas réinstallée,
+    /// et un dossier existant qui n'a pas été installé par le plugin n'est jamais écrasé.
+    /// </summary>
     internal static class ResourceExtractor
     {
+        private const string Custom = "custom";
+
         public static void ExtractBuiltins(string dataDir)
         {
-            Directory.CreateDirectory(Path.Combine(dataDir, "Applications"));
-            foreach (string name in EmbeddedFiles.Names)
+            string appsDir = Path.Combine(dataDir, "Applications");
+            Directory.CreateDirectory(appsDir);
+            string statePath = Path.Combine(dataDir, "Configuration", "builtin-apps.json");
+            Dictionary<string, string> installed = new Dictionary<string, string>();
+            try
             {
-                string target;
-                if (name.StartsWith("Apps/")) target = Path.Combine(dataDir, "Applications", name.Substring(5));
-                else if (name.StartsWith("Docs/")) target = Path.Combine(dataDir, name.Substring(5));
-                else continue;
-
-                Directory.CreateDirectory(Path.GetDirectoryName(target));
-                File.WriteAllBytes(target, EmbeddedFiles.Get(name));
+                if (File.Exists(statePath))
+                    installed = JsonConvert.DeserializeObject<Dictionary<string, string>>(File.ReadAllText(statePath)) ?? installed;
             }
+            catch { }
+
+            foreach (IGrouping<string, string> app in EmbeddedFiles.Names.Where(n => n.StartsWith("Apps/")).GroupBy(n => n.Split('/')[1]))
+            {
+                string id = app.Key;
+                string folder = Path.Combine(appsDir, id);
+                string version = EmbeddedVersion(id);
+                bool exists = Directory.Exists(folder);
+                bool known = installed.TryGetValue(id, out string installedVersion);
+
+                bool write;
+                if (id == AppRegistry.SettingsAppId) write = true;
+                else if (!known) write = !exists;
+                else write = exists && installedVersion != Custom && installedVersion != version;
+
+                if (write)
+                {
+                    foreach (string name in app)
+                    {
+                        string target = Path.Combine(appsDir, name.Substring(5).Replace('/', Path.DirectorySeparatorChar));
+                        Directory.CreateDirectory(Path.GetDirectoryName(target));
+                        File.WriteAllBytes(target, EmbeddedFiles.Get(name));
+                    }
+                    installed[id] = version;
+                }
+                else if (!known)
+                {
+                    installed[id] = Custom;
+                }
+            }
+
+            foreach (string name in EmbeddedFiles.Names.Where(n => n.StartsWith("Docs/")))
+                File.WriteAllBytes(Path.Combine(dataDir, name.Substring(5)), EmbeddedFiles.Get(name));
+
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(statePath));
+                File.WriteAllText(statePath, JsonConvert.SerializeObject(installed, Formatting.Indented));
+            }
+            catch (Exception e) { Log.Warning($"impossible d'écrire {statePath} : {e.Message}"); }
+        }
+
+        private static string EmbeddedVersion(string id)
+        {
+            try
+            {
+                byte[] json = EmbeddedFiles.Get($"Apps/{id}/app.json");
+                return json == null ? "0" : JsonConvert.DeserializeObject<AppManifest>(Encoding.UTF8.GetString(json))?.Version ?? "0";
+            }
+            catch { return "0"; }
         }
     }
 
@@ -339,6 +462,14 @@ namespace MyIntranetOS
         public bool IsAdmin;
         public string Ip;
         public long UpdatedAt;
+        public string IdCard;
+        public string Commune;
+        public string Height;
+        public int SexId;
+        public bool PermisB;
+        public int PermisPoints;
+        public bool HasBCR;
+        public bool OnDuty;
 
         public string FullName => $"{FirstName} {LastName}".Trim();
     }
@@ -368,7 +499,15 @@ namespace MyIntranetOS
                     BizId = c.BizId,
                     IsAdmin = player.IsAdmin,
                     Ip = IpUtils.Normalize(GetAddress(player)),
-                    UpdatedAt = Clock.Now
+                    UpdatedAt = Clock.Now,
+                    IdCard = c.IdCard,
+                    Commune = c.Commune,
+                    Height = c.Height,
+                    SexId = c.SexId,
+                    PermisB = c.PermisB,
+                    PermisPoints = c.PermisPoints,
+                    HasBCR = c.HasBCR,
+                    OnDuty = player.serviceMetier
                 };
                 try { snapshot.Money = player.Money; } catch { }
                 try { snapshot.BizName = player.HasBiz ? player.biz?.BizName : null; } catch { }
@@ -396,6 +535,8 @@ namespace MyIntranetOS
         public void Remove(ulong steamId) => players.TryRemove(steamId, out _);
 
         public PlayerSnapshot Get(ulong steamId) => players.TryGetValue(steamId, out PlayerSnapshot p) ? p : null;
+
+        public List<int> OnlineCharacterIds() => players.Values.Select(p => p.CharacterId).ToList();
 
         public List<PlayerSnapshot> FindByIp(string ip) => players.Values.Where(p => p.Ip != null && p.Ip == ip).ToList();
 
@@ -447,8 +588,8 @@ namespace MyIntranetOS
         public int AutoLockMinutes { get; set; } = 5;
         public string AppOrder { get; set; } = "[]";
         public string HiddenApps { get; set; } = "[]";
-        public string Dock { get; set; } = "[\"reglages\"]";
-        public string Widgets { get; set; } = "[\"clock\",\"profile\",\"wallet\"]";
+        public string Dock { get; set; } = "[\"portefeuille\",\"banque\",\"servicepublic\",\"birdy\",\"reglages\"]";
+        public string Widgets { get; set; } = "[\"clock\",\"wallet\",\"notifications\",\"news\"]";
 
         public string PinHash { get; set; }
         public string PinSalt { get; set; }
@@ -484,6 +625,17 @@ namespace MyIntranetOS
             db = new SQLiteConnection(path);
             db.CreateTable<TabletProfile>();
             db.CreateTable<AppStorageEntry>();
+        }
+
+        public void Register<T>() where T : new()
+        {
+            lock (sync) db.CreateTable<T>();
+        }
+
+        /// <summary>Accès exclusif à la connexion (une seule requête SQLite à la fois).</summary>
+        public T With<T>(Func<SQLiteConnection, T> action)
+        {
+            lock (sync) return action(db);
         }
 
         public static string OwnerKey(ulong steamId, int characterId) => $"{steamId}:{characterId}";
@@ -806,6 +958,7 @@ namespace MyIntranetOS
         [JsonProperty("color")] public string Color;
         [JsonProperty("entry")] public string Entry;
         [JsonProperty("adminOnly")] public bool AdminOnly;
+        [JsonProperty("order")] public int Order = 1000;
 
         [JsonIgnore] public string Folder;
         [JsonIgnore] public bool Builtin => Id == AppRegistry.SettingsAppId;
@@ -857,8 +1010,8 @@ namespace MyIntranetOS
                     }
                     found.Add(app);
                 }
-                // Réglages toujours en premier
-                apps = found.OrderBy(a => a.Builtin ? 0 : 1).ToList();
+                // Ordre par défaut : champ "order" du manifeste, puis nom
+                apps = found.OrderBy(a => a.Order).ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
                 lastScan = DateTime.UtcNow;
             }
         }
@@ -1195,7 +1348,7 @@ namespace MyIntranetOS
         private static readonly Regex WallpaperUrlPattern = new Regex(@"^https?://[^\s""'()\\<>]{1,500}$");
         private static readonly string[] WallpaperPresets = { "aurora", "ocean", "sunset", "forest", "night", "nova", "graphite", "candy" };
         private static readonly string[] Themes = { "auto", "light", "dark" };
-        private static readonly string[] WidgetIds = { "clock", "profile", "wallet", "calendar" };
+        private static readonly string[] WidgetIds = { "clock", "wallet", "notifications", "news", "profile", "calendar" };
         private const int MaxStorageValueBytes = 64 * 1024;
         private const int MaxStorageKeysPerApp = 200;
 
@@ -1295,7 +1448,8 @@ namespace MyIntranetOS
             if (path == "/settings/reset" && req.Method == "POST") return ResetSettings(profile);
             if (path.StartsWith("/storage/")) return Storage(req, session, player, path.Substring(9));
 
-            return HttpResponse.Error(404, "not_found");
+            HttpResponse feature = plugin.Features?.Handle(new ApiContext { Req = req, Path = path, Session = session, Player = player, Profile = profile });
+            return feature ?? HttpResponse.Error(404, "not_found");
         }
 
         private HttpResponse Info()
@@ -1549,7 +1703,7 @@ namespace MyIntranetOS
                             p.HiddenApps = AppIds(v, 200, AppRegistry.SettingsAppId);
                             break;
                         case "dock":
-                            p.Dock = AppIds(v, 4);
+                            p.Dock = AppIds(v, 5);
                             break;
                         case "widgets":
                             List<string> widgets = v.ToObject<List<string>>() ?? new List<string>();

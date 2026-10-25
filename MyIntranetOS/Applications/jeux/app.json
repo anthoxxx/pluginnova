@@ -1,0 +1,11 @@
+{
+  "id": "jeux",
+  "name": "Jeux",
+  "description": "Mini-jeux : 2048 et Serpent",
+  "version": "1.0.0",
+  "author": "MyIntranet OS",
+  "icon": "icon.svg",
+  "color": "#1a1238",
+  "entry": "index.html",
+  "order": 150
+}

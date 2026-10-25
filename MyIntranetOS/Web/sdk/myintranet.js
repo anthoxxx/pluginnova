@@ -188,8 +188,17 @@
     notify: function (title, message, type) { send('notify', { title: title, message: message, type: type || 'info' }); },
     /** Ferme l'application (retour à l'écran d'accueil). */
     close: function () { send('close'); },
-    /** Ouvre une autre application. */
-    openApp: function (appId) { send('open-app', { id: appId }); },
+    /** Ouvre une autre application, avec des paramètres facultatifs (lus par MyIntranet.params()). */
+    openApp: function (appId, params) { send('open-app', { id: appId, params: params || null }); },
+    /** Paramètres reçus à l'ouverture (ex. { number: "0612345678" }). */
+    params: function () {
+      var out = {};
+      try { new URLSearchParams(global.location.search).forEach(function (v, k) { out[k] = v; }); } catch (e) { /* ancien navigateur */ }
+      if (context && context.params) Object.keys(context.params).forEach(function (k) { if (!(k in out)) out[k] = context.params[k]; });
+      return out;
+    },
+    /** Demande à la tablette de rafraîchir argent, notifications et actualités (après une action). */
+    refresh: function () { send('refresh'); },
     /** Pastille sur l'icône de l'application (0 pour l'enlever). */
     setBadge: function (count) { send('badge', { count: count | 0 }); },
     /** Verrouille la tablette. */

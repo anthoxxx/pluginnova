@@ -1,0 +1,11 @@
+{
+  "id": "portefeuille",
+  "name": "Portefeuille",
+  "description": "Argent, carte d'identité et permis",
+  "version": "1.0.0",
+  "author": "MyIntranet OS",
+  "icon": "icon.svg",
+  "color": "#1c1c1e",
+  "entry": "index.html",
+  "order": 800
+}

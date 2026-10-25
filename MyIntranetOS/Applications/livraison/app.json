@@ -1,0 +1,11 @@
+{
+  "id": "livraison",
+  "name": "Blue Eats",
+  "description": "Commander un repas aux restaurateurs",
+  "version": "1.0.0",
+  "author": "MyIntranet OS",
+  "icon": "icon.svg",
+  "color": "#0b1a2e",
+  "entry": "index.html",
+  "order": 80
+}

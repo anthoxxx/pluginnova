@@ -1,0 +1,11 @@
+{
+  "id": "messages",
+  "name": "Messages",
+  "description": "Vos SMS, synchronisés avec le téléphone du jeu",
+  "version": "1.0.0",
+  "author": "MyIntranet OS",
+  "icon": "icon.svg",
+  "color": "#09b83e",
+  "entry": "index.html",
+  "order": 15
+}

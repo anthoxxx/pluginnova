@@ -1,0 +1,11 @@
+{
+  "id": "radio",
+  "name": "Radio",
+  "description": "Écouter la radio",
+  "version": "1.0.0",
+  "author": "MyIntranet OS",
+  "icon": "icon.svg",
+  "color": "#3d4a1c",
+  "entry": "index.html",
+  "order": 40
+}

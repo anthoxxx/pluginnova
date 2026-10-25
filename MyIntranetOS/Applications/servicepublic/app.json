@@ -1,0 +1,11 @@
+{
+  "id": "servicepublic",
+  "name": "Service Public",
+  "description": "Démarches auprès des services publics",
+  "version": "1.0.0",
+  "author": "MyIntranet OS",
+  "icon": "icon.svg",
+  "color": "#1e40af",
+  "entry": "index.html",
+  "order": 820
+}

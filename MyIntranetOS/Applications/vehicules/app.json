@@ -1,0 +1,11 @@
+{
+  "id": "vehicules",
+  "name": "Véhicules",
+  "description": "Vos véhicules et leur position GPS",
+  "version": "1.0.0",
+  "author": "MyIntranet OS",
+  "icon": "icon.svg",
+  "color": "#0a5cd8",
+  "entry": "index.html",
+  "order": 50
+}

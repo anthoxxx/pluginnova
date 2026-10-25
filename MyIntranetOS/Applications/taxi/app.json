@@ -1,0 +1,11 @@
+{
+  "id": "taxi",
+  "name": "Taxi",
+  "description": "Commander un taxi",
+  "version": "1.0.0",
+  "author": "MyIntranet OS",
+  "icon": "icon.svg",
+  "color": "#f5b800",
+  "entry": "index.html",
+  "order": 70
+}

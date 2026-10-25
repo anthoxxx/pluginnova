@@ -1,0 +1,11 @@
+{
+  "id": "sante",
+  "name": "Santé",
+  "description": "Appeler les secours et les médecins",
+  "version": "1.0.0",
+  "author": "MyIntranet OS",
+  "icon": "icon.svg",
+  "color": "#8e8e93",
+  "entry": "index.html",
+  "order": 120
+}

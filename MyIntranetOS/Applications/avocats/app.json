@@ -1,0 +1,11 @@
+{
+  "id": "avocats",
+  "name": "Avocats",
+  "description": "Prendre rendez-vous avec un avocat",
+  "version": "1.0.0",
+  "author": "MyIntranet OS",
+  "icon": "icon.svg",
+  "color": "#7a0f1f",
+  "entry": "index.html",
+  "order": 140
+}

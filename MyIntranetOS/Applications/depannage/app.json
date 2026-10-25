@@ -1,0 +1,11 @@
+{
+  "id": "depannage",
+  "name": "Dépannage",
+  "description": "Mécaniciens et fourrière",
+  "version": "1.0.0",
+  "author": "MyIntranet OS",
+  "icon": "icon.svg",
+  "color": "#d9480f",
+  "entry": "index.html",
+  "order": 170
+}

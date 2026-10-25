@@ -1,0 +1,11 @@
+{
+  "id": "banque",
+  "name": "Banque",
+  "description": "Solde, historique et virements",
+  "version": "1.0.0",
+  "author": "MyIntranet OS",
+  "icon": "icon.svg",
+  "color": "#3a2fb0",
+  "entry": "index.html",
+  "order": 810
+}

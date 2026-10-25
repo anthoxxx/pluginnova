@@ -49,6 +49,7 @@ L'application apparaît sur l'écran d'accueil **en moins de 10 secondes, sans r
 | `color` | non | Couleur de fond de l'icône, format `#rrggbb`. |
 | `entry` | non | Page d'entrée, `index.html` par défaut. |
 | `adminOnly` | non | `true` : visible uniquement par les joueurs staff. |
+| `order` | non | Position par défaut sur l'écran d'accueil (plus petit = plus haut, 1000 par défaut). |
 
 Les fichiers de l'application sont servis sur `/apps/<id>/...`.
 Utilisez des **chemins relatifs** (`app.js`, `img/logo.png`) dans votre HTML.
@@ -128,7 +129,9 @@ MyIntranet.storage.get('notes').then(function (notes) {
 |---|---|
 | `MyIntranet.notify(titre, message, type)` | Notification de la tablette. `type` : `info`, `success`, `warning`, `error`. |
 | `MyIntranet.close()` | Ferme l'application (retour à l'accueil). |
-| `MyIntranet.openApp(id)` | Ouvre une autre application. |
+| `MyIntranet.openApp(id, params)` | Ouvre une autre application, avec des paramètres facultatifs (ex. `MyIntranet.openApp('messages', { number: '0612345678' })`). |
+| `MyIntranet.params()` | Paramètres reçus à l'ouverture. |
+| `MyIntranet.refresh()` | Demande à la tablette de rafraîchir argent, notifications et actualités. |
 | `MyIntranet.setBadge(n)` | Pastille rouge sur l'icône (0 pour l'enlever). |
 | `MyIntranet.lock()` | Verrouille la tablette. |
 | `MyIntranet.ready(cb)` | `cb(context)` quand la tablette a répondu. `context = { app, settings, me, os }`. |
@@ -139,6 +142,26 @@ MyIntranet.storage.get('notes').then(function (notes) {
 
 `MyIntranet.applyAppearance(settings)`, `MyIntranet.resolveTheme(theme)`, `MyIntranet.wallpaperCss(id)`,
 `MyIntranet.wallpapers`, `MyIntranet.accents`, `MyIntranet.version`.
+
+### Kit d'interface `/sdk/ui.js` (facultatif)
+
+Les applications intégrées utilisent `UI` : `UI.h(tag, attributs, ...enfants)`, `UI.header`, `UI.tabs`, `UI.sheet`
+(fenêtre modale), `UI.confirm`, `UI.field`, `UI.avatar`, `UI.empty`, `UI.loading`, `UI.action` (bouton qui se
+désactive pendant l'action), `UI.money`, `UI.ago`, `UI.date`, `UI.time`, `UI.success`, `UI.error`.
+Lisez le code des applications de `Applications/` pour des exemples complets.
+
+### Application de service sans code
+
+Pour un nouveau service (ex. « Coiffeur »), ajoutez une entrée dans `Services` de `configuration.json`, puis créez
+`Applications/coiffeur/` avec un `app.json` et cet `index.html` :
+
+```html
+<link rel="stylesheet" href="/sdk/myintranet.css">
+<div class="mi-page" id="app" data-service="coiffeur"></div>
+<script src="/sdk/myintranet.js"></script>
+<script src="/sdk/ui.js"></script>
+<script src="/sdk/service-app.js"></script>
+```
 
 ## 5. Protocole `postMessage` (sans le SDK)
 
@@ -191,6 +214,47 @@ par le navigateur). Les requêtes `POST`, `PUT` et `DELETE` doivent contenir l'e
 | POST | `/api/settings/reset` | Préférences par défaut. |
 | GET | `/api/storage/<appId>` | Clés enregistrées. |
 | GET / POST / DELETE | `/api/storage/<appId>/<clé>` | Lire / écrire (`{ "value": ... }`) / supprimer. |
+
+### Routes des applications intégrées (reliées au jeu)
+
+Utilisables aussi par vos applications.
+
+| Méthode | Route | Description |
+|---|---|---|
+| GET | `/api/notifications` | `{ unread, items: [{ id, app, title, message, type, read, createdAt }] }` |
+| POST | `/api/notifications/read` | `{ "ids": [1, 2] }` (sans `ids` : tout marquer comme lu). |
+| POST | `/api/notifications/clear` | Efface toutes les notifications. |
+| GET | `/api/wallet` | Identité, permis, argent. |
+| GET | `/api/bank` | Solde, historique. |
+| POST | `/api/bank/transfer` | `{ "to": "0612345678" ou "Prénom Nom", "amount": 150, "label": "Loyer" }` |
+| GET | `/api/sms` | Conversations (téléphone du jeu). |
+| GET | `/api/sms/<numéro>` | Messages d'une conversation. |
+| POST | `/api/sms` | `{ "to": "0612345678", "message": "…" }` |
+| GET / POST | `/api/contacts` | Contacts du téléphone du jeu (`{ "name", "number" }`). |
+| DELETE | `/api/contacts/<id>` | Supprime un contact. |
+| GET | `/api/directory` | Entreprises (nom, description, contact, activités, recrutement). |
+| GET | `/api/mail/accounts` | Boîtes accessibles (`mine`) et annuaire des adresses (`directory`). |
+| GET | `/api/mail/<boîte>` | Mails d'une boîte. |
+| POST | `/api/mail/send` | `{ "from": "<id boîte>", "to": "<domaine>", "subject", "content" }` |
+| DELETE | `/api/mail/<boîte>/<guid>` | Supprime un mail. |
+| GET / POST | `/api/news` | Articles (`canPublish` indique si le joueur peut publier `{ "title", "body" }`). |
+| DELETE | `/api/news/<id>` | Supprime un article (auteur ou staff). |
+| GET / POST | `/api/birdy` | Fil (`?before=<id>` pour paginer) / publier `{ "text" }`. |
+| POST | `/api/birdy/<id>/like` | J'aime (bascule). |
+| DELETE | `/api/birdy/<id>` | Supprime un message (auteur ou staff). |
+| GET | `/api/vehicles` | Véhicules du personnage. |
+| POST | `/api/vehicles/<id>/locate` | Place un point GPS en jeu sur le véhicule. |
+| GET | `/api/realestate` | `{ mine, forSale }` |
+| POST | `/api/realestate/<id>/locate` | Point GPS en jeu sur le terrain. |
+| GET / POST | `/api/ads` | Petites annonces / publier `{ "title", "category", "price", "description" }`. |
+| DELETE | `/api/ads/<id>` | Retire une annonce. |
+| GET | `/api/services` | Services configurés. |
+| GET | `/api/services/<id>` | Détail : `provider`, `available`, `businesses`, `mine`, `queue`. |
+| POST | `/api/services/<id>/requests` | `{ "message", "sharePosition": true }` notifie les joueurs en service. |
+| POST | `/api/services/requests/<id>/<action>` | `accept`, `locate`, `done`, `cancel`. |
+| GET | `/api/radio` | Stations configurées. |
+
+Les erreurs du jeu (serveur occupé) renvoient `503`. Les actions répétées trop vite renvoient `429`.
 
 Codes d'erreur : `401` session expirée (la tablette se réidentifie), `423` tablette verrouillée,
 `429` trop de tentatives, `400` donnée invalide, `404` introuvable.
