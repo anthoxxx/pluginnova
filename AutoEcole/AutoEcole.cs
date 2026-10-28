@@ -465,11 +465,10 @@ namespace AutoEcole
                 session.Answers = question.Answers().OrderBy(_ => random.Next()).ToList();
 
             Panel panel = PanelHelper.Create("Examen du code", UIPanel.PanelType.Text, player, () => ShowQuestion(player, session));
-            panel.TextLines.Add(C($"Question {session.Index + 1}/{session.Questions.Count}", TFH.Colors.Info));
-            panel.TextLines.Add(question.Intitule);
-            panel.TextLines.Add("");
+            // Texte réduit pour ne pas passer sous les boutons de réponse
+            panel.TextLines.Add(TFH.Size(C($"Question {session.Index + 1}/{session.Questions.Count} : ", TFH.Colors.Info) + question.Intitule, 15));
             for (int i = 0; i < session.Answers.Count; i++)
-                panel.TextLines.Add($"{(char)('A' + i)}. {session.Answers[i].Text}");
+                panel.TextLines.Add(TFH.Size($"{(char)('A' + i)}. {session.Answers[i].Text}", 13));
 
             for (int i = 0; i < session.Answers.Count; i++)
             {
